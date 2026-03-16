@@ -7,7 +7,7 @@
 "use strict";
 
 const GEMINI = {
-  endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent",
+  endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
   maxTokens: 2048,
   storageKey: "ap_gemini_key",
 };
