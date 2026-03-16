@@ -333,40 +333,73 @@ async function insertProfileChart(tolerances, config) {
     }
     await ctx.sync();
 
-    // Données pour le graphique
-    const headers = [
-      "X ref", "Récouv.%", "LTB%", "LTH%",
-      "L.Accept.basse%", "L.Accept.haute%", "Ref 100%"
+    const unite = config.unite || "";
+    const lambda = config.lambda * 100;
+    const beta   = config.beta * 100;
+
+    // ── Ligne 1 : titre ─────────────────────────────────────────────────────
+    const titleCell = sheet.getRange("A1");
+    titleCell.values = [[`Profil d'Exactitude — ${config.methode || "Méthode"} — β=${beta}%, λ=±${lambda}%`]];
+    titleCell.format.font.bold = true;
+    titleCell.format.font.color = "#0B1929";
+    titleCell.format.font.size  = 11;
+
+    // ── Lignes 3–N : données (séries Y uniquement, étiquettes X séparées) ──
+    // Colonne A = étiquettes concentrations (non tracées)
+    // Colonnes B–F = séries tracées (toutes en %)
+    const hdrRow = [
+      `Conc. réf. (${unite})`,
+      "Taux de recouvrement (%)",
+      `LTB β=${beta}% (%)`,
+      `LTH β=${beta}% (%)`,
+      `L. Accept. basse (${100 - lambda}%)`,
+      `L. Accept. haute (${100 + lambda}%)`,
+      "Référence 100%"
     ];
+
     const dataRows = tolerances.map(t => [
-      t.xMean,
-      +(t.recouvRel || 100).toFixed(3),
-      +(t.ltbRel || 0).toFixed(3),
-      +(t.lthRel || 0).toFixed(3),
-      t.laBasse,
-      t.laHaute,
-      100
+      +t.xMean.toFixed(4),                     // A : concentration (label)
+      +(t.recouvRel || 100).toFixed(3),         // B : recouvrement
+      +(t.ltbRel    || 0).toFixed(3),           // C : LTB
+      +(t.lthRel    || 0).toFixed(3),           // D : LTH
+      +(t.laBasse).toFixed(1),                  // E : limite basse acceptabilité
+      +(t.laHaute).toFixed(1),                  // F : limite haute acceptabilité
+      100                                        // G : référence 100%
     ]);
-    const allData = [headers, ...dataRows];
-    const range   = sheet.getRange(`A1:G${allData.length}`);
-    range.values  = allData;
 
-    // Style en-tête
-    const hdr = sheet.getRange(`A1:G1`);
-    hdr.format.fill.color = "#0B1929";
-    hdr.format.font.color = "#F5A623";
+    const allRows  = [hdrRow, ...dataRows];
+    const nRows    = allRows.length;
+    const dataRange = sheet.getRange(`A3:G${2 + nRows}`);
+    dataRange.values = allRows;
+
+    // Style en-tête de données
+    const hdr = sheet.getRange(`A3:G3`);
+    hdr.format.fill.color = "#122339";
+    hdr.format.font.color = "#9BBDD6";
     hdr.format.font.bold  = true;
+    hdr.format.font.size  = 9;
 
-    // Créer le graphique
+    // ── Graphique : séries B–G seulement (pas la col A = concentrations) ──
+    // On crée le graphique sur les colonnes B–G, puis on fixe les étiquettes X
+    const chartDataRange = sheet.getRange(`B3:G${2 + nRows}`);
     const chart = sheet.charts.add(
       Excel.ChartType.line,
-      sheet.getRange(`A1:G${allData.length}`),
+      chartDataRange,
       Excel.ChartSeriesBy.columns
     );
 
-    chart.title.text  = "Profil d'Exactitude";
-    chart.setPosition(sheet.getRange("A10"), sheet.getRange("M30"));
-    chart.legend.visible = true;
+    chart.title.text = "Profil d'Exactitude";
+    chart.setPosition(sheet.getRange("A12"), sheet.getRange("N32"));
+    chart.legend.position = Excel.ChartLegendPosition.bottom;
+    chart.legend.visible  = true;
+
+    // Axe Y : titre
+    chart.axes.getItem(Excel.ChartAxisType.value).title.text = "Taux de recouvrement (%)";
+    chart.axes.getItem(Excel.ChartAxisType.value).title.visible = true;
+
+    // Axe X : titre
+    chart.axes.getItem(Excel.ChartAxisType.category).title.text = `Concentration de référence (${unite})`;
+    chart.axes.getItem(Excel.ChartAxisType.category).title.visible = true;
 
     sheet.activate();
     await ctx.sync();

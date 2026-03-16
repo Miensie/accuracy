@@ -617,23 +617,7 @@ function setupReportHandlers() {
     logReport("Rapport HTML généré", "ok");
   });
 
-  document.getElementById("btn-report-excel").addEventListener("click", async () => {
-    if (!APP.results) { toast("Calculez d'abord le profil", "warn"); return; }
-    setBtnLoading("btn-report-excel", true, "Génération…");
-    try {
-      await ExcelBridge.writeAnalysisResults(APP.results, APP.config);
 
-      // Insérer le graphique
-      await ExcelBridge.insertProfileChart(APP.results.tolerances, APP.config);
-
-      toast("✅ Rapport Excel généré", "info");
-      logReport("Onglets résultats + graphique créés", "ok");
-    } catch (e) {
-      toast("Erreur : " + e.message, "err");
-      logReport("Erreur : " + e.message, "err");
-    }
-    setBtnLoading("btn-report-excel", false, "📊 Générer dans Excel");
-  });
 }
 
 // ─── Utilitaires UI ───────────────────────────────────────────────────────────

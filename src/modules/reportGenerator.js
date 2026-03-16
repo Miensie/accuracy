@@ -206,8 +206,77 @@ function generateHTMLReport(appState, options = {}) {
     html += `</table>`;
   }
 
+  // ── Profil d'exactitude ───────────────────────────────────────────────────
+  if (inc.profile !== false) {
+    const lambda = config.lambda * 100;
+    const beta   = config.beta   * 100;
+    const laBasse = tolerances[0]?.laBasse || (100 - lambda);
+    const laHaute = tolerances[0]?.laHaute || (100 + lambda);
+
+    // Données sérialisées pour le script inline
+    const chartData = {
+      labels:  tolerances.map(t => `${t.xMean.toFixed(3)} ${config.unite || ""}`),
+      recouv:  tolerances.map(t => +(t.recouvRel || 100).toFixed(3)),
+      ltb:     tolerances.map(t => +(t.ltbRel    || 0).toFixed(3)),
+      lth:     tolerances.map(t => +(t.lthRel    || 0).toFixed(3)),
+      laLow:   tolerances.map(() => +laBasse.toFixed(1)),
+      laHigh:  tolerances.map(() => +laHaute.toFixed(1)),
+      ref100:  tolerances.map(() => 100),
+      colors:  tolerances.map(t => t.accept ? "#F5A623" : "#EF4444"),
+    };
+    const dataStr = JSON.stringify(chartData);
+
+    html += `<h2>6. Profil d'exactitude</h2>
+<p style="font-size:11px;color:#666;margin-bottom:8px">
+  Axe X : concentration de référence — Axe Y : taux de recouvrement (%) —
+  β=${beta}%, λ=±${lambda}%
+</p>
+<div class="chart-wrap">
+  <canvas id="profile-chart-report"></canvas>
+</div>
+<script>
+(function(){
+  const d = ${dataStr};
+  const ctx = document.getElementById("profile-chart-report").getContext("2d");
+  new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: d.labels,
+      datasets: [
+        { label: "Taux de recouvrement (%)", data: d.recouv,
+          borderColor: "#F5A623", backgroundColor: "rgba(245,166,35,0.08)",
+          pointBackgroundColor: d.colors, pointRadius: 6,
+          borderWidth: 2, tension: 0.3, fill: false },
+        { label: "LTB β-expect.", data: d.ltb,
+          borderColor: "#1A3050", pointRadius: 3, borderWidth: 1.5,
+          tension: 0.3, fill: "+1", backgroundColor: "rgba(26,48,80,0.06)" },
+        { label: "LTH β-expect.", data: d.lth,
+          borderColor: "#1A3050", pointRadius: 3, borderWidth: 1.5, tension: 0.3, fill: false },
+        { label: "L. Accept. basse (${(100 - lambda).toFixed(0)}%)", data: d.laLow,
+          borderColor: "#EF4444", borderDash: [7,4], pointRadius: 0, borderWidth: 1.5, fill: false },
+        { label: "L. Accept. haute (${(100 + lambda).toFixed(0)}%)", data: d.laHigh,
+          borderColor: "#EF4444", borderDash: [7,4], pointRadius: 0, borderWidth: 1.5, fill: false },
+        { label: "Référence 100%", data: d.ref100,
+          borderColor: "rgba(140,160,185,0.4)", borderDash: [3,3], pointRadius: 0, borderWidth: 1, fill: false }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { font: { size: 10 }, boxWidth: 14 } } },
+      scales: {
+        x: { title: { display: true, text: "Concentration de référence (${config.unite || ""})" } },
+        y: { title: { display: true, text: "Taux de recouvrement (%)" },
+             suggestedMin: ${Math.min(laBasse - 8, ...tolerances.map(t => t.ltbRel || 0)) - 2},
+             suggestedMax: ${Math.max(laHaute + 8, ...tolerances.map(t => t.lthRel || 0)) + 2} }
+      }
+    }
+  });
+})();
+<\/script>`;
+  }
+
   // ── Domaine de validité ───────────────────────────────────────────────────
-  html += `<h2>6. Domaine de validité</h2>
+  html += `<h2>7. Domaine de validité</h2>
 <div class="verdict ${validity.valid ? 'v' : validity.partial ? 'p' : 'i'}">
   <strong>${validity.valid ? '✅ MÉTHODE VALIDE' : validity.partial ? '⚠ MÉTHODE PARTIELLEMENT VALIDE' : '❌ MÉTHODE NON VALIDE'}</strong><br>
   ${validity.nValid} niveau(x) sur ${validity.nTotal} respectent les critères β-expectation (${validity.pct}%).`;
@@ -219,7 +288,7 @@ function generateHTMLReport(appState, options = {}) {
 
   // ── Interprétation IA ─────────────────────────────────────────────────────
   if (inc.ai !== false && aiContent) {
-    html += `<h2>7. Interprétation par intelligence artificielle</h2>
+    html += `<h2>8. Interprétation par intelligence artificielle</h2>
 <div class="ai-section">${aiContent.replace(/\n/g, "<br>")}</div>`;
   }
 
