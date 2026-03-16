@@ -85,8 +85,69 @@ const FEINBERG_CONFIG = {
   reference: "Feinberg M. (2010). Interprétation du profil d'exactitude. SFSTP."
 };
 
+
+/**
+ * ================================================================
+ * Données de démonstration — MÉTHODE DIRECTE
+ * Dosage gravimétrique du NaCl dans solution aqueuse (titrimétrie)
+ * I=3 séries, J=3 répétitions, K=3 niveaux
+ * La réponse Z est directement la concentration mesurée (mg/L)
+ * sans courbe d'étalonnage.
+ * ================================================================
+ */
+const DIRECT_VALIDATION = [
+  // Niveau 1 — valeur de référence 50 mg/L
+  { niveau: "N1", serie: "Jour 1", rep: 1, xRef: 50.0, yResponse: 49.82 },
+  { niveau: "N1", serie: "Jour 1", rep: 2, xRef: 50.0, yResponse: 50.14 },
+  { niveau: "N1", serie: "Jour 1", rep: 3, xRef: 50.0, yResponse: 49.95 },
+  { niveau: "N1", serie: "Jour 2", rep: 1, xRef: 50.0, yResponse: 50.31 },
+  { niveau: "N1", serie: "Jour 2", rep: 2, xRef: 50.0, yResponse: 49.76 },
+  { niveau: "N1", serie: "Jour 2", rep: 3, xRef: 50.0, yResponse: 50.08 },
+  { niveau: "N1", serie: "Jour 3", rep: 1, xRef: 50.0, yResponse: 50.22 },
+  { niveau: "N1", serie: "Jour 3", rep: 2, xRef: 50.0, yResponse: 49.91 },
+  { niveau: "N1", serie: "Jour 3", rep: 3, xRef: 50.0, yResponse: 50.05 },
+  // Niveau 2 — valeur de référence 150 mg/L
+  { niveau: "N2", serie: "Jour 1", rep: 1, xRef: 150.0, yResponse: 149.45 },
+  { niveau: "N2", serie: "Jour 1", rep: 2, xRef: 150.0, yResponse: 150.82 },
+  { niveau: "N2", serie: "Jour 1", rep: 3, xRef: 150.0, yResponse: 150.11 },
+  { niveau: "N2", serie: "Jour 2", rep: 1, xRef: 150.0, yResponse: 151.03 },
+  { niveau: "N2", serie: "Jour 2", rep: 2, xRef: 150.0, yResponse: 149.78 },
+  { niveau: "N2", serie: "Jour 2", rep: 3, xRef: 150.0, yResponse: 150.44 },
+  { niveau: "N2", serie: "Jour 3", rep: 1, xRef: 150.0, yResponse: 150.29 },
+  { niveau: "N2", serie: "Jour 3", rep: 2, xRef: 150.0, yResponse: 149.62 },
+  { niveau: "N2", serie: "Jour 3", rep: 3, xRef: 150.0, yResponse: 150.87 },
+  // Niveau 3 — valeur de référence 300 mg/L
+  { niveau: "N3", serie: "Jour 1", rep: 1, xRef: 300.0, yResponse: 299.12 },
+  { niveau: "N3", serie: "Jour 1", rep: 2, xRef: 300.0, yResponse: 300.84 },
+  { niveau: "N3", serie: "Jour 1", rep: 3, xRef: 300.0, yResponse: 300.23 },
+  { niveau: "N3", serie: "Jour 2", rep: 1, xRef: 300.0, yResponse: 301.45 },
+  { niveau: "N3", serie: "Jour 2", rep: 2, xRef: 300.0, yResponse: 299.67 },
+  { niveau: "N3", serie: "Jour 2", rep: 3, xRef: 300.0, yResponse: 300.91 },
+  { niveau: "N3", serie: "Jour 3", rep: 1, xRef: 300.0, yResponse: 300.34 },
+  { niveau: "N3", serie: "Jour 3", rep: 2, xRef: 300.0, yResponse: 299.88 },
+  { niveau: "N3", serie: "Jour 3", rep: 3, xRef: 300.0, yResponse: 301.12 },
+];
+
+const DIRECT_CONFIG = {
+  methode:    "Dosage du NaCl par titrimétrie (méthode de Mohr) — méthode directe",
+  materiau:   "Chlorure de sodium (NaCl)",
+  unite:      "mg/L",
+  methodType: "direct",
+  beta:       0.80,
+  lambda:     0.05,  // ±5% — critère plus strict pour méthode primaire
+  K: 3, I: 3, J: 3,
+  niveaux: [
+    { code: "N1", xRef: 50.0,  label: "Niveau bas (50 mg/L)"  },
+    { code: "N2", xRef: 150.0, label: "Niveau moyen (150 mg/L)" },
+    { code: "N3", xRef: 300.0, label: "Niveau haut (300 mg/L)" },
+  ],
+  note: "Méthode directe : Z = concentration mesurée directement par titrimétrie. Pas d'étalonnage requis."
+};
+
 window.DemoData = {
   FEINBERG_VALIDATION,
   FEINBERG_ETALONNAGE,
   FEINBERG_CONFIG,
+  DIRECT_VALIDATION,
+  DIRECT_CONFIG,
 };

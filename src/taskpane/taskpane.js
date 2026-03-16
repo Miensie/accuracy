@@ -87,13 +87,16 @@ function setupDataHandlers() {
 
     setBtnLoading("btn-generate-plan", true, "Génération…");
     try {
-      const { sheetName, rows } = await ExcelBridge.generatePlanValidation(K, I, J, u);
+      const methodType = document.getElementById("cfg-type").value;
+      const { sheetName, rows } = await ExcelBridge.generatePlanValidation(K, I, J, u, methodType);
       toast(`✅ Plan généré : ${rows} lignes → onglet "${sheetName}"`, "info");
-      log(`Plan de validation créé : K=${K}, I=${I}, J=${J}`, "ok");
+      log(`Plan de validation ${methodType} : K=${K}, I=${I}, J=${J}`, "ok");
 
-      if (document.getElementById("cfg-type").value === "indirect") {
+      if (methodType === "indirect") {
         await ExcelBridge.generatePlanEtalonnage(I, 2, 2, u);
         log("Plan d'étalonnage créé (2 niveaux, 2 répétitions)", "ok");
+      } else {
+        log("Méthode directe : pas de plan d'étalonnage requis", "info");
       }
     } catch (e) {
       toast("Erreur génération plan : " + e.message, "err");
@@ -140,26 +143,53 @@ async function handleImportAndCalc() {
 }
 
 function handleDemo() {
-  APP.planValidation = DemoData.FEINBERG_VALIDATION;
-  APP.planEtalonnage = DemoData.FEINBERG_ETALONNAGE;
+  const demoType = document.getElementById("cfg-type").value;
 
-  const cfg = DemoData.FEINBERG_CONFIG;
-  document.getElementById("cfg-methode").value  = cfg.methode;
-  document.getElementById("cfg-materiau").value = cfg.materiau;
-  document.getElementById("cfg-unite").value    = cfg.unite;
-  document.getElementById("cfg-type").value     = cfg.methodType;
-  document.getElementById("cfg-lambda").value   = cfg.lambda * 100;
-  document.getElementById("cfg-beta").value     = cfg.beta * 100;
-  document.getElementById("cfg-K").value        = cfg.K;
-  document.getElementById("cfg-I").value        = cfg.I;
-  document.getElementById("cfg-J").value        = cfg.J;
+  if (demoType === "direct") {
+    // Démo méthode directe : dosage gravimétrique NaCl dans solution
+    APP.planValidation = DemoData.DIRECT_VALIDATION;
+    APP.planEtalonnage = [];
 
-  readConfigFromUI();
-  runAnalysis();
-  renderPreview();
+    const cfg = DemoData.DIRECT_CONFIG;
+    document.getElementById("cfg-methode").value  = cfg.methode;
+    document.getElementById("cfg-materiau").value = cfg.materiau;
+    document.getElementById("cfg-unite").value    = cfg.unite;
+    document.getElementById("cfg-type").value     = cfg.methodType;
+    document.getElementById("cfg-lambda").value   = cfg.lambda * 100;
+    document.getElementById("cfg-beta").value     = cfg.beta * 100;
+    document.getElementById("cfg-K").value        = cfg.K;
+    document.getElementById("cfg-I").value        = cfg.I;
+    document.getElementById("cfg-J").value        = cfg.J;
+    document.getElementById("etalon-range-row").style.display = "none";
 
-  toast("✅ Données Feinberg (2010) chargées", "info");
-  log(`Cas Feinberg : ${APP.planValidation.length} mesures · ${APP.planEtalonnage.length} étalons`, "ok");
+    readConfigFromUI();
+    runAnalysis();
+    renderPreview();
+    toast("✅ Démo méthode directe chargée", "info");
+    log(`Cas direct : ${APP.planValidation.length} mesures`, "ok");
+  } else {
+    // Démo méthode indirecte : Feinberg (2010)
+    APP.planValidation = DemoData.FEINBERG_VALIDATION;
+    APP.planEtalonnage = DemoData.FEINBERG_ETALONNAGE;
+
+    const cfg = DemoData.FEINBERG_CONFIG;
+    document.getElementById("cfg-methode").value  = cfg.methode;
+    document.getElementById("cfg-materiau").value = cfg.materiau;
+    document.getElementById("cfg-unite").value    = cfg.unite;
+    document.getElementById("cfg-type").value     = cfg.methodType;
+    document.getElementById("cfg-lambda").value   = cfg.lambda * 100;
+    document.getElementById("cfg-beta").value     = cfg.beta * 100;
+    document.getElementById("cfg-K").value        = cfg.K;
+    document.getElementById("cfg-I").value        = cfg.I;
+    document.getElementById("cfg-J").value        = cfg.J;
+    document.getElementById("etalon-range-row").style.display = "block";
+
+    readConfigFromUI();
+    runAnalysis();
+    renderPreview();
+    toast("✅ Données Feinberg (2010) chargées — méthode indirecte", "info");
+    log(`Cas Feinberg : ${APP.planValidation.length} mesures · ${APP.planEtalonnage.length} étalons`, "ok");
+  }
 }
 
 function readConfigFromUI() {

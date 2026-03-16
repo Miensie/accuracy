@@ -137,8 +137,14 @@
 
     <div class="card">
       <div class="card-label">DONNÉES DE DÉMONSTRATION</div>
-      <p class="card-note">Cas Feinberg (2010) — Dosage du nicotinamide (vitamine B3) dans le lait par HPLC. I=3, J=3, K=3, &lambda;=10%, &beta;=80%.</p>
-      <button class="btn btn-ghost" id="btn-demo">&#x25B6; Charger Feinberg (2010)</button>
+      <p class="card-note">
+        <strong>Méthode indirecte</strong> — Feinberg (2010) : vitamine B3 HPLC. λ=10%, β=80%.<br>
+        <strong>Méthode directe</strong> — Titrimétrie NaCl. λ=5%, β=80%.
+      </p>
+      <p class="card-note" style="margin-top:4px;color:var(--text-muted)">
+        Sélectionnez le type de méthode ci-dessus, puis cliquez le bouton.
+      </p>
+      <button class="btn btn-ghost" id="btn-demo">&#x25B6; Charger les données de démonstration</button>
     </div>
 
     <div id="log-data" class="log-panel"></div>

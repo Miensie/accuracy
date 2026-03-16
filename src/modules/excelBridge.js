@@ -86,12 +86,12 @@ async function readPlanEtalonnage(rangeAddress) {
  * Génère le plan de validation dans une nouvelle feuille Excel.
  * Crée un tableau structuré avec les colonnes requises.
  */
-async function generatePlanValidation(K, I, J, unite = "") {
+async function generatePlanValidation(K, I, J, unite = "", methodType = "indirect") {
   return Excel.run(async ctx => {
-    const wb       = ctx.workbook;
+    const wb        = ctx.workbook;
+    const isDirect  = methodType === "direct";
     const sheetName = "Plan_Validation";
 
-    // Obtenir ou créer la feuille
     let sheet = wb.worksheets.getItemOrNullObject(sheetName);
     await ctx.sync();
     if (sheet.isNullObject) {
@@ -101,20 +101,26 @@ async function generatePlanValidation(K, I, J, unite = "") {
     }
     await ctx.sync();
 
-    // En-têtes
-    const headers = [
-      "Niveau (k)", "Série (i)", "Répétition (j)",
-      `Valeur référence X (${unite})`,
-      "Réponse instrumentale Y",
-      "Unité"
-    ];
+    // Colonnes différentes selon le type de méthode
+    // Méthode directe  : X ref + Z mesurée directement (pesée, titrimétrie…)
+    // Méthode indirecte: X ref + Y réponse instrumentale (absorbance, aire pic…)
+    const headers = isDirect
+      ? ["Niveau (k)", "Série (i)", "Répétition (j)",
+         `Valeur référence X (${unite})`,
+         `Concentration mesurée Z (${unite})`,
+         "Remarque"]
+      : ["Niveau (k)", "Série (i)", "Répétition (j)",
+         `Valeur référence X (${unite})`,
+         "Réponse instrumentale Y",
+         "Unité"];
 
-    // Générer les lignes du plan
     const rows = [headers];
     for (let k = 1; k <= K; k++) {
       for (let i = 1; i <= I; i++) {
         for (let j = 1; j <= J; j++) {
-          rows.push([k, i, j, `X${k}${i}${j}`, `Y${k}${i}${j}`, unite]);
+          rows.push(isDirect
+            ? [k, i, j, `X${k}`, `Z${k}${i}${j}`, ""]
+            : [k, i, j, `X${k}${i}${j}`, `Y${k}${i}${j}`, unite]);
         }
       }
     }
