@@ -408,6 +408,214 @@ async function insertProfileChart(tolerances, config) {
   });
 }
 
+
+/**
+ * Génère des feuilles Excel avec des tableaux de saisie standards
+ * pré-formatés et prêts à remplir (avec exemples et instructions).
+ */
+async function generateBlankTemplates(config) {
+  const { K = 3, I = 3, J = 3, unite = "", methodType = "indirect" } = config;
+  const isDirect = methodType === "direct";
+
+  return Excel.run(async ctx => {
+    const wb = ctx.workbook;
+
+    // ─── Feuille 1 : Plan de validation ─────────────────────────────────────
+    let sheetV = wb.worksheets.getItemOrNullObject("Plan_Validation");
+    await ctx.sync();
+    if (sheetV.isNullObject) { sheetV = wb.worksheets.add("Plan_Validation"); }
+    else { sheetV.getUsedRangeOrNullObject().clear(); }
+    await ctx.sync();
+    sheetV.tabColor = "#1A3050";
+
+    // Titre
+    sheetV.getRange("A1").values = [["PLAN DE VALIDATION — " + (isDirect ? "METHODE DIRECTE" : "METHODE INDIRECTE")]];
+    sheetV.getRange("A1").format.font.bold  = true;
+    sheetV.getRange("A1").format.font.size  = 12;
+    sheetV.getRange("A1").format.font.color = "#0B1929";
+
+    // Instructions
+    const instrV = isDirect
+      ? [["I = nombre de séries (jours) ≥ 3   |   J = répétitions par série ≥ 2   |   K = niveaux ≥ 3"],
+         ["La colonne Z = concentration mesurée directement (pesée, titrimétrie…). Pas d'étalonnage requis."]]
+      : [["I = nombre de séries (jours) ≥ 3   |   J = répétitions par série ≥ 2   |   K = niveaux ≥ 3"],
+         ["La colonne Y = réponse instrumentale brute (aire de pic, absorbance…). Nécessite un plan d'étalonnage."]];
+    sheetV.getRange("A2:A3").values = instrV;
+    sheetV.getRange("A2:A3").format.font.color = "#4A6080";
+    sheetV.getRange("A2:A3").format.font.size  = 9;
+    sheetV.getRange("A2:A3").format.font.italic = true;
+
+    // En-têtes colonnes
+    const hdrV = isDirect
+      ? ["Niveau (k)", "Série (i)", "Répétition (j)", "Valeur référence X (" + unite + ")", "Concentration mesurée Z (" + unite + ")", "Biais absolu", "Biais relatif %", "Remarque"]
+      : ["Niveau (k)", "Série (i)", "Répétition (j)", "Valeur référence X (" + unite + ")", "Réponse instrumentale Y", "Concentration retrouvée Z (" + unite + ")", "Biais absolu", "Biais relatif %"];
+    const nColV = hdrV.length;
+    const hdrRangeV = sheetV.getRange("A5:" + String.fromCharCode(64 + nColV) + "5");
+    hdrRangeV.values = [hdrV];
+    hdrRangeV.format.fill.color = "#0B1929";
+    hdrRangeV.format.font.color = "#F5A623";
+    hdrRangeV.format.font.bold  = true;
+    hdrRangeV.format.font.size  = 9;
+
+    // Lignes de saisie (K × I × J)
+    let rowV = 6;
+    for (let k = 1; k <= K; k++) {
+      for (let i = 1; i <= I; i++) {
+        for (let j = 1; j <= J; j++) {
+          const rowData = isDirect
+            ? [k, i, j, "", "", "", "", ""]
+            : [k, i, j, "", "", "", "", ""];
+          sheetV.getRange("A" + rowV + ":" + String.fromCharCode(64 + nColV) + rowV).values = [rowData];
+          // Cellules X en jaune (à remplir)
+          sheetV.getRange("D" + rowV).format.fill.color = "#FFFDE7";
+          // Cellules Y ou Z en vert clair (à remplir)
+          sheetV.getRange("E" + rowV).format.fill.color = "#E8F5E9";
+          // Lignes alternées
+          if ((rowV - 6) % 2 === 1) {
+            sheetV.getRange("A" + rowV + ":H" + rowV).format.fill.color = "#F8F9FC";
+          }
+          rowV++;
+        }
+      }
+    }
+
+    // Ligne exemple (ligne 6 pré-remplie)
+    sheetV.getRange("A6").values = [[1]];
+    sheetV.getRange("B6").values = [[1]];
+    sheetV.getRange("C6").values = [[1]];
+    sheetV.getRange("D6").values = [["← Entrez la valeur de référence (ex: 0.40)"]];
+    sheetV.getRange("E6").values = [["← Entrez la réponse mesurée (ex: 22.6)"]];
+    sheetV.getRange("D6").format.font.color = "#9C6B00";
+    sheetV.getRange("E6").format.font.color = "#1B5E20";
+    sheetV.getRange("D6").format.font.italic = true;
+    sheetV.getRange("E6").format.font.italic = true;
+
+    // Légende couleurs
+    sheetV.getRange("A" + (rowV + 1)).values = [["LÉGENDE :"]];
+    sheetV.getRange("A" + (rowV + 1)).format.font.bold = true;
+    sheetV.getRange("A" + (rowV + 2)).format.fill.color = "#FFFDE7";
+    sheetV.getRange("A" + (rowV + 2)).values = [["Fond jaune = Valeur de référence X (connue)"]];
+    sheetV.getRange("A" + (rowV + 3)).format.fill.color = "#E8F5E9";
+    sheetV.getRange("A" + (rowV + 3)).values = [["Fond vert = Réponse mesurée Y ou Z (à mesurer)"]];
+
+    // Largeurs
+    const widthsV = isDirect ? [12,10,14,26,26,16,16,20] : [12,10,14,26,24,26,16,16];
+    widthsV.forEach(function(w, i) {
+      sheetV.getRange(String.fromCharCode(65 + i) + "1").format.columnWidth = w * 7;
+    });
+    sheetV.getRange("A1").format.rowHeight = 28;
+    sheetV.getRange("A5").format.rowHeight = 24;
+
+    await ctx.sync();
+
+    // ─── Feuille 2 : Plan d'étalonnage (méthode indirecte uniquement) ────────
+    if (!isDirect) {
+      let sheetE = wb.worksheets.getItemOrNullObject("Plan_Etalonnage");
+      await ctx.sync();
+      if (sheetE.isNullObject) { sheetE = wb.worksheets.add("Plan_Etalonnage"); }
+      else { sheetE.getUsedRangeOrNullObject().clear(); }
+      await ctx.sync();
+      sheetE.tabColor = "#F5A623";
+
+      sheetE.getRange("A1").values = [["PLAN D'ÉTALONNAGE — MÉTHODE INDIRECTE"]];
+      sheetE.getRange("A1").format.font.bold  = true;
+      sheetE.getRange("A1").format.font.size  = 12;
+      sheetE.getRange("A1").format.font.color = "#0B1929";
+
+      sheetE.getRange("A2").values = [["⚠ Synchroniser avec le plan de validation : mêmes séries (mêmes jours / opérateurs). Minimum K' = 2 niveaux, J' = 2 répétitions par série."]];
+      sheetE.getRange("A2").format.font.color  = "#4A6080";
+      sheetE.getRange("A2").format.font.italic = true;
+      sheetE.getRange("A2").format.font.size   = 9;
+
+      const hdrE = ["Niveau étalon (k')", "Série (i)", "Répétition (j')", "Concentration étalon X (" + unite + ")", "Réponse instrumentale Y", "Remarque"];
+      sheetE.getRange("A4:F4").values = [hdrE];
+      sheetE.getRange("A4:F4").format.fill.color = "#0B1929";
+      sheetE.getRange("A4:F4").format.font.color = "#F5A623";
+      sheetE.getRange("A4:F4").format.font.bold  = true;
+      sheetE.getRange("A4:F4").format.font.size  = 9;
+
+      // Générer K'=2 niveaux, I séries, J'=2 répétitions
+      const K2 = 2, J2 = 2;
+      let rowE = 5;
+      for (let k = 1; k <= K2; k++) {
+        for (let i = 1; i <= I; i++) {
+          for (let j = 1; j <= J2; j++) {
+            sheetE.getRange("A" + rowE + ":F" + rowE).values = [[k, i, j, "", "", ""]];
+            sheetE.getRange("D" + rowE).format.fill.color = "#FFFDE7";
+            sheetE.getRange("E" + rowE).format.fill.color = "#E8F5E9";
+            if ((rowE - 5) % 2 === 1) {
+              sheetE.getRange("A" + rowE + ":F" + rowE).format.fill.color = "#F8F9FC";
+            }
+            rowE++;
+          }
+        }
+      }
+
+      // Exemples ligne 5
+      sheetE.getRange("D5").values = [["← Concentration étalon bas (ex: 0.40)"]];
+      sheetE.getRange("E5").values = [["← Réponse mesurée (ex: 22.7)"]];
+      sheetE.getRange("D5").format.font.color  = "#9C6B00";
+      sheetE.getRange("E5").format.font.color  = "#1B5E20";
+      sheetE.getRange("D5").format.font.italic = true;
+      sheetE.getRange("E5").format.font.italic = true;
+
+      // Note en bas
+      sheetE.getRange("A" + (rowE + 1)).values = [["IMPORTANT : Un seul modèle d'étalonnage est calculé par série. Les étalons de chaque série servent à réaliser la prédiction inverse pour cette même série."]];
+      sheetE.getRange("A" + (rowE + 1)).format.font.color  = "#7C3AED";
+      sheetE.getRange("A" + (rowE + 1)).format.font.italic = true;
+      sheetE.getRange("A" + (rowE + 1)).format.font.size   = 9;
+
+      // Largeurs
+      [18, 10, 14, 30, 24, 20].forEach(function(w, i) {
+        sheetE.getRange(String.fromCharCode(65 + i) + "1").format.columnWidth = w * 7;
+      });
+
+      await ctx.sync();
+    }
+
+    // ─── Feuille 3 : Paramètres de validation ────────────────────────────────
+    let sheetP = wb.worksheets.getItemOrNullObject("Paramètres");
+    await ctx.sync();
+    if (sheetP.isNullObject) { sheetP = wb.worksheets.add("Paramètres"); }
+    else { sheetP.getUsedRangeOrNullObject().clear(); }
+    await ctx.sync();
+    sheetP.tabColor = "#22C55E";
+
+    sheetP.getRange("A1").values = [["PARAMÈTRES DE VALIDATION — À REMPLIR AVANT TOUTE ANALYSE"]];
+    sheetP.getRange("A1").format.font.bold  = true;
+    sheetP.getRange("A1").format.font.size  = 12;
+    sheetP.getRange("A1").format.font.color = "#0B1929";
+
+    const params = [
+      ["Paramètre",         "Valeur",    "Explication"],
+      ["Méthode analytique","",          "Nom complet de la méthode à valider"],
+      ["Matériau de validation","",      "Nature du matériau (MRC, ajout dosé, etc.)"],
+      ["Unité de concentration","",      "ex: mg/L, µg/kg, %, etc."],
+      ["Type de méthode",  "indirecte", "directe = sans étalonnage | indirecte = avec étalonnage"],
+      ["Limite λ (%)",     "10",        "Limite d'acceptabilité. Ex: 10 pour ±10%"],
+      ["Proportion β (%)", "80",        "Proportion de futurs résultats dans les IT. Min: 80%"],
+      ["Niveaux K",        "3",         "Nombre de concentrations. Min: 3"],
+      ["Séries I",         "3",         "Nombre de jours/opérateurs/lots. Min: 3"],
+      ["Répétitions J",    "3",         "Répétitions par série et par niveau. Min: 2"],
+      ["Modèle étalonnage","linéaire",  "linéaire | origine | quadratique"],
+    ];
+    sheetP.getRange("A3:C" + (3 + params.length - 1)).values = params;
+    sheetP.getRange("A3:C3").format.fill.color = "#0B1929";
+    sheetP.getRange("A3:C3").format.font.color = "#F5A623";
+    sheetP.getRange("A3:C3").format.font.bold  = true;
+    // Cellules valeurs en jaune
+    sheetP.getRange("B4:B" + (3 + params.length - 1)).format.fill.color = "#FFFDE7";
+    // Largeurs
+    [40, 20, 60].forEach(function(w, i) {
+      sheetP.getRange(String.fromCharCode(65 + i) + "1").format.columnWidth = w * 6;
+    });
+
+    sheetP.activate();
+    await ctx.sync();
+    return { sheetV: "Plan_Validation", sheetE: isDirect ? null : "Plan_Etalonnage", sheetP: "Paramètres" };
+  });
+}
+
 window.ExcelBridge = {
   detectUsedRange,
   readPlanValidation,
@@ -417,4 +625,5 @@ window.ExcelBridge = {
   writeTable,
   writeAnalysisResults,
   insertProfileChart,
+  generateBlankTemplates,
 };

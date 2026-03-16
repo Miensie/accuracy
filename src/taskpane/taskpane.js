@@ -105,6 +105,27 @@ function setupDataHandlers() {
     setBtnLoading("btn-generate-plan", false, "⊞ Générer le plan dans Excel");
   });
 
+  // Templates vierges
+  document.getElementById("btn-generate-templates").addEventListener("click", async () => {
+    readConfigFromUI();
+    setBtnLoading("btn-generate-templates", true, "Génération…");
+    try {
+      const res = await ExcelBridge.generateBlankTemplates({
+        K: parseInt(document.getElementById("cfg-K").value) || 3,
+        I: parseInt(document.getElementById("cfg-I").value) || 3,
+        J: parseInt(document.getElementById("cfg-J").value) || 3,
+        unite:      document.getElementById("cfg-unite").value,
+        methodType: document.getElementById("cfg-type").value,
+      });
+      toast("✅ Feuilles de saisie créées", "info");
+      log("Templates créés : " + [res.sheetP, res.sheetV, res.sheetE].filter(Boolean).join(", "), "ok");
+    } catch (e) {
+      toast("Erreur : " + e.message, "err");
+      log("Erreur : " + e.message, "err");
+    }
+    setBtnLoading("btn-generate-templates", false, "▦ Générer les feuilles de saisie (templates)");
+  });
+
   // Import et calcul
   document.getElementById("btn-import").addEventListener("click", handleImportAndCalc);
 
