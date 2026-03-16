@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Accuracy Profile — Validation Analytique</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%230B1929%22/><text y=%2222%22 x=%2216%22 text-anchor=%22middle%22 font-size=%2218%22 fill=%22%23F5A623%22>⬟</text></svg>">
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-brand">
+    <div class="brand-mark">⬟</div>
+    <div>
+      <div class="brand-name">ACCURACY <span class="brand-accent">PROFILE</span></div>
+      <div class="brand-sub">Validation analytique · ISO 5725-2 · Feinberg</div>
+    </div>
+  </div>
+  <div id="footer-status" class="header-status">Initialisation…</div>
+</header>
+
+<nav class="nav-bar">
+  <button class="nav-tab active" data-panel="panel-data">
+    <span class="nav-icon">⊞</span><span class="nav-lbl">Données</span>
+  </button>
+  <button class="nav-tab" data-panel="panel-calc">
+    <span class="nav-icon">∑</span><span class="nav-lbl">Calculs</span>
+  </button>
+  <button class="nav-tab" data-panel="panel-profile">
+    <span class="nav-icon">◈</span><span class="nav-lbl">Profil</span>
+  </button>
+  <button class="nav-tab" data-panel="panel-ai">
+    <span class="nav-icon">✦</span><span class="nav-lbl">IA</span>
+  </button>
+  <button class="nav-tab" data-panel="panel-report">
+    <span class="nav-icon">▤</span><span class="nav-lbl">Rapport</span>
+  </button>
+</nav>
+
+<main class="main-content">
+
+  <!-- PANEL: DONNÉES -->
+  <section id="panel-data" class="panel active">
+    <div class="panel-header">
+      <h2>Paramètres et données</h2>
+      <p class="panel-sub">Configuration du plan de validation selon ISO 5725-2 / Feinberg (2010).</p>
+    </div>
+
+    <div class="card">
+      <div class="card-label">PARAMÈTRES DE VALIDATION</div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Méthode analytique</label>
+          <input type="text" id="cfg-methode" placeholder="ex: Dosage vitamine B3 HPLC"/>
+        </div>
+        <div class="form-field">
+          <label>Matériau de validation</label>
+          <input type="text" id="cfg-materiau" placeholder="ex: Nicotinamide"/>
+        </div>
+        <div class="form-field">
+          <label>Unité de concentration</label>
+          <input type="text" id="cfg-unite" placeholder="ex: mg/L"/>
+        </div>
+        <div class="form-field">
+          <label>Type de méthode</label>
+          <select id="cfg-type" class="select-field">
+            <option value="indirect">Indirecte (étalonnage requis)</option>
+            <option value="direct">Directe (sans étalonnage)</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Limite d'acceptabilité &lambda; (%)</label>
+          <input type="number" id="cfg-lambda" value="10" min="1" max="50" step="0.5"/>
+        </div>
+        <div class="form-field">
+          <label>Proportion &beta; (%)</label>
+          <input type="number" id="cfg-beta" value="80" min="50" max="99" step="1"/>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">PLAN EXPÉRIMENTAL</div>
+      <div class="form-grid-3">
+        <div class="form-field">
+          <label>Niveaux K <span class="field-note">min 3</span></label>
+          <input type="number" id="cfg-K" value="3" min="3" max="10"/>
+        </div>
+        <div class="form-field">
+          <label>Séries I <span class="field-note">min 3</span></label>
+          <input type="number" id="cfg-I" value="3" min="3" max="20"/>
+        </div>
+        <div class="form-field">
+          <label>Répétitions J <span class="field-note">min 2</span></label>
+          <input type="number" id="cfg-J" value="3" min="2" max="10"/>
+        </div>
+      </div>
+      <button class="btn btn-secondary" id="btn-generate-plan">
+        ⊞ Générer le plan dans Excel
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="card-label">IMPORT DEPUIS EXCEL</div>
+      <div class="form-field" style="margin-bottom:8px">
+        <label>Plage plan de validation</label>
+        <div class="input-row">
+          <input type="text" id="range-validation" placeholder="ex: A1:F28"/>
+          <button class="btn-icon" id="btn-detect-validation" title="Détecter auto">⟳</button>
+        </div>
+      </div>
+      <div class="form-field" id="etalon-range-row" style="margin-bottom:8px">
+        <label>Plage plan d'étalonnage</label>
+        <div class="input-row">
+          <input type="text" id="range-etalonnage" placeholder="ex: H1:K13"/>
+          <button class="btn-icon" id="btn-detect-etalonnage" title="Détecter auto">⟳</button>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="btn-import">
+        <span id="btn-import-label">⊞ Importer et calculer</span>
+      </button>
+    </div>
+
+    <div class="card" id="preview-card" style="display:none">
+      <div class="card-label">APERÇU — <span id="preview-n">0</span> MESURES</div>
+      <div class="table-scroll">
+        <table class="data-table" id="preview-table">
+          <thead id="preview-thead"></thead>
+          <tbody id="preview-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">DONNÉES DE DÉMONSTRATION</div>
+      <p class="card-note">Cas Feinberg (2010) — Dosage du nicotinamide (vitamine B3) dans le lait par HPLC. I=3, J=3, K=3, &lambda;=10%, &beta;=80%.</p>
+      <button class="btn btn-ghost" id="btn-demo">&#x25B6; Charger Feinberg (2010)</button>
+    </div>
+
+    <div id="log-data" class="log-panel"></div>
+  </section>
+
+  <!-- PANEL: CALCULS -->
+  <section id="panel-calc" class="panel">
+    <div class="panel-header">
+      <h2>Résultats statistiques</h2>
+      <p class="panel-sub">Justesse, fidélité et intervalles de tolérance &beta;-expectation selon Mee (1984).</p>
+    </div>
+
+    <div class="card" id="calc-empty">
+      <div class="calc-placeholder">
+        <div class="placeholder-icon">∑</div>
+        <p>Importez des données pour lancer les calculs.</p>
+      </div>
+    </div>
+
+    <div id="calc-results" style="display:none">
+      <div class="card" id="etalonnage-card">
+        <div class="card-label">MODÈLES D'ÉTALONNAGE</div>
+        <div id="etalonnage-results" class="mono-block"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">CRITÈRES PAR NIVEAU — JUSTESSE ET FIDÉLITÉ</div>
+        <div class="table-scroll">
+          <table class="data-table results-table">
+            <thead><tr>
+              <th>Niveau</th><th>X&#x0305; réf.</th><th>Z&#x0305; retrouvée</th>
+              <th>s&#x1D63;</th><th>s&#x1D61;</th><th>s&#x2071;</th><th>CV%</th>
+              <th>Biais%</th><th>Récouv.%</th>
+            </tr></thead>
+            <tbody id="criteria-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">INTERVALLES DE TOLÉRANCE &beta;-EXPECTATION (Mee, 1984)</div>
+        <div class="table-scroll">
+          <table class="data-table results-table">
+            <thead><tr>
+              <th>Niveau</th><th>X&#x0305; réf.</th><th>s&#x1D35;&#x1D40;</th>
+              <th>k&#x209C;&#x2092;&#x2097;</th><th>&nu;</th>
+              <th>LTB%</th><th>LTH%</th>
+              <th>L.A. basse%</th><th>L.A. haute%</th><th>Statut</th>
+            </tr></thead>
+            <tbody id="tolerance-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">DÉTECTION DES ABERRANTS — TEST DE GRUBBS</div>
+        <div id="outlier-results"></div>
+      </div>
+
+      <div style="padding:0 var(--gap) var(--gap)">
+        <button class="btn btn-secondary" id="btn-write-results">
+          📊 Écrire les résultats dans Excel
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PANEL: PROFIL D'EXACTITUDE -->
+  <section id="panel-profile" class="panel">
+    <div class="panel-header">
+      <h2>Profil d'exactitude</h2>
+      <p class="panel-sub">Représentation graphique des intervalles &beta;-expectation et des limites d'acceptabilité.</p>
+    </div>
+
+    <div class="card" id="profile-empty">
+      <div class="calc-placeholder">
+        <div class="placeholder-icon">◈</div>
+        <p>Calculez d'abord les intervalles de tolérance.</p>
+      </div>
+    </div>
+
+    <div id="profile-content" style="display:none">
+      <div class="card">
+        <div class="legend-row" id="profile-legend"></div>
+      </div>
+
+      <div class="card">
+        <div class="chart-container-xl">
+          <canvas id="chart-profile"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">VERDICT DE VALIDATION</div>
+        <div id="verdict-box"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">DOMAINE DE VALIDITÉ</div>
+        <div id="validity-domain"></div>
+      </div>
+
+      <div style="padding:0 var(--gap) var(--gap)">
+        <button class="btn btn-secondary" id="btn-insert-chart">
+          📊 Insérer le graphique dans Excel
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PANEL: IA -->
+  <section id="panel-ai" class="panel">
+    <div class="panel-header">
+      <h2>Interprétation par IA</h2>
+      <p class="panel-sub">Diagnostic automatique — conformité ISO 5725-2 / ICH Q2(R1).</p>
+    </div>
+
+    <div class="card">
+      <div class="card-label">API GEMINI — GOOGLE AI STUDIO</div>
+      <div class="input-row" style="margin-bottom:4px">
+        <input type="password" id="gemini-key" placeholder="AIza…" autocomplete="off"/>
+        <button class="btn-icon" id="btn-save-key" title="Sauvegarder">💾</button>
+      </div>
+      <div class="api-note">Clé gratuite sur <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a></div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">ANALYSES DISPONIBLES</div>
+      <div class="ai-actions">
+        <button class="btn btn-primary"   id="btn-ai-full">✦ Diagnostic complet</button>
+        <button class="btn btn-secondary" id="btn-ai-profile">◈ Interpréter le profil</button>
+        <button class="btn btn-secondary" id="btn-ai-outliers">⚠ Analyser les aberrants</button>
+        <button class="btn btn-secondary" id="btn-ai-reco">📋 Recommandations</button>
+      </div>
+    </div>
+
+    <div class="card" id="ai-result-card" style="display:none">
+      <div class="card-label">RÉSULTAT</div>
+      <div id="ai-content" class="ai-content-box"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">ASSISTANT ANALYTIQUE</div>
+      <div id="chat-messages" class="chat-box">
+        <div class="chat-msg assistant">
+          <div class="chat-bubble">Bonjour. Je suis spécialisé en validation analytique (ISO 5725-2, ICH Q2, Feinberg). Calculez votre profil puis posez vos questions.</div>
+        </div>
+      </div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="Question sur votre méthode…"/>
+        <button class="btn-send" id="btn-chat">&#x279E;</button>
+      </div>
+      <div class="chat-chips">
+        <button class="chip" data-p="La méthode est-elle valide selon ISO 5725-2 ?">Validité ISO ?</button>
+        <button class="chip" data-p="Expliquez les causes probables du biais au niveau 1.">Biais N1 ?</button>
+        <button class="chip" data-p="Comment améliorer la fidélité intermédiaire ?">Fidélité ?</button>
+        <button class="chip" data-p="Comparez aux critères ICH Q2(R1) pour méthode HPLC.">ICH Q2(R1)</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PANEL: RAPPORT -->
+  <section id="panel-report" class="panel">
+    <div class="panel-header">
+      <h2>Rapport de validation</h2>
+      <p class="panel-sub">Génération du rapport complet conforme aux exigences réglementaires.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-label">EN-TÊTE DU RAPPORT</div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Laboratoire</label>
+          <input type="text" id="rpt-labo" placeholder="Nom du laboratoire"/>
+        </div>
+        <div class="form-field">
+          <label>Analyste</label>
+          <input type="text" id="rpt-analyste" placeholder="Prénom NOM"/>
+        </div>
+        <div class="form-field">
+          <label>Référence document</label>
+          <input type="text" id="rpt-ref" placeholder="VAL-2025-001"/>
+        </div>
+        <div class="form-field">
+          <label>Version</label>
+          <input type="text" id="rpt-version" placeholder="1.0"/>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">SECTIONS DU RAPPORT</div>
+      <div class="checkbox-list">
+        <label class="cb-row"><input type="checkbox" id="rpt-params"     checked/> Paramètres de validation</label>
+        <label class="cb-row"><input type="checkbox" id="rpt-etalonnage" checked/> Modèles d'étalonnage</label>
+        <label class="cb-row"><input type="checkbox" id="rpt-criteria"   checked/> Critères de justesse et fidélité</label>
+        <label class="cb-row"><input type="checkbox" id="rpt-tolerance"  checked/> Intervalles &beta;-expectation</label>
+        <label class="cb-row"><input type="checkbox" id="rpt-profile"    checked/> Profil d'exactitude</label>
+        <label class="cb-row"><input type="checkbox" id="rpt-outliers"   checked/> Détection des aberrants</label>
+        <label class="cb-row"><input type="checkbox" id="rpt-ai"         checked/> Interprétation IA</label>
+        <label class="cb-row"><input type="checkbox" id="rpt-reco"       checked/> Recommandations</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <button class="btn btn-primary"   id="btn-report-excel">
+        📊 Générer dans Excel
+      </button>
+      <button class="btn btn-secondary" id="btn-report-html" style="margin-top:6px">
+        🌐 Télécharger en HTML
+      </button>
+    </div>
+
+    <div id="log-report" class="log-panel"></div>
+  </section>
+
+</main>
+
+<div id="toast-container"></div>
+</body>
+</html>
