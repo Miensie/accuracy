@@ -3,7 +3,6 @@
  * taskpane.js — Orchestrateur principal Accuracy Profile Add-in
  * ================================================================
  */
-import "./taskpane.css";
 
 
 // ─── Configuration Backend ────────────────────────────────────────────────────
