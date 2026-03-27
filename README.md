@@ -300,35 +300,35 @@ docker run -p 8000:8000 accuracy-profile
 
 ## 🔌 Intégration avec l'Excel Add-in
 
-Le code a été adapté pour supporter un mode "backend distant" (Render ou serveur Docker) avec champ URL et checkbox dans l'UI :
+Dans votre `taskpane.js`, remplacez les appels internes par :
 
-- `cfg-api-url` : URL du backend (ex : `https://mon-backend.onrender.com`)
-- `cfg-use-backend` : cas d'utilisation du backend au lieu des calculs JS locaux
+```javascript
+const API_BASE = "http://localhost:8000";  // ou votre URL Render
 
-Les données sont postées vers :
+async function callBackend(planValidation, planEtalonnage, config) {
+  const resp = await fetch(`${API_BASE}/accuracy-profile?charts=true`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ planValidation, planEtalonnage, config })
+  });
 
-`POST /accuracy-profile?charts=true&normative=true&interpret=true`
+  if (!resp.ok) {
+    const err = await resp.json();
+    throw new Error(err.detail || "Erreur API");
+  }
 
-Payload :
+  return await resp.json();
+}
 
-```json
-{
-  "planValidation": [...],
-  "planEtalonnage": [...],
-  "config": {
-    "methode": "...",
-    "materiau": "...",
-    "unite": "...",
-    "methodType": "indirect",
-    "modelType": "linear",
-    "beta": 0.8,
-    "lambdaVal": 0.1,
-    "alpha": 0.05
+// Afficher le graphique profil
+function displayProfileChart(result) {
+  if (result.charts?.profile) {
+    const img = document.createElement("img");
+    img.src = result.charts.profile;  // data:image/png;base64,...
+    document.getElementById("chart-container").appendChild(img);
   }
 }
 ```
-
-Le frontend conserve un fallback local en cas d’erreur API.
 
 ---
 

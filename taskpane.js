@@ -6,9 +6,38 @@
 import "./taskpane.css";
 
 
-// ─── État global ──────────────────────────────────────────────────────────────
-const DEFAULT_API_BASE = "https://accuracy.onrender.com";
+// ─── Configuration Backend ────────────────────────────────────────────────────
+const BACKEND_URL = 'http://localhost:8000'; // Adjust if backend is on different port/host
 
+// ─── Vérification Backend ─────────────────────────────────────────────────────
+async function checkBackendHealth() {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/health`);
+    if (!response.ok) {
+      throw new Error(`Backend non accessible: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.status === 'ok';
+  } catch (error) {
+    console.error('Erreur vérification backend:', error);
+    return false;
+  }
+}
+
+async function getNormativeCriteria() {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/norms`);
+    if (!response.ok) {
+      throw new Error(`Erreur récupération normes: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Erreur récupération normes:', error);
+    return null;
+  }
+}
+
+// ─── État global ──────────────────────────────────────────────────────────────
 const APP = {
   planValidation:  null,
   planEtalonnage:  null,
@@ -16,8 +45,6 @@ const APP = {
   config:          {},
   aiContent:       "",
   profileChart:    null,
-  apiBase:         localStorage.getItem("acc_profile_api_base") || DEFAULT_API_BASE,
-  useBackend:      localStorage.getItem("acc_profile_use_backend") === "true",
 };
 
 // ─── Démarrage ────────────────────────────────────────────────────────────────
@@ -30,29 +57,22 @@ Office.onReady(info => {
 });
 
 function initApp() {
+  // Vérifier la connexion au backend
+  checkBackendHealth().then(healthy => {
+    if (!healthy) {
+      toast("⚠ Backend non accessible. Vérifiez que le serveur Python est démarré.", "warn");
+      setStatus("Backend hors ligne");
+    } else {
+      setStatus("Backend connecté ✓");
+    }
+  });
+
   setupNavigation();
   setupDataHandlers();
   setupCalcHandlers();
   setupProfileHandlers();
   setupAIHandlers();
   setupReportHandlers();
-
-  // Backend settings (Render / containerized API)
-  const apiUrlInput = document.getElementById("cfg-api-url");
-  const useBackendInput = document.getElementById("cfg-use-backend");
-  if (apiUrlInput) apiUrlInput.value = APP.apiBase;
-  if (useBackendInput) useBackendInput.checked = APP.useBackend;
-
-  apiUrlInput?.addEventListener("change", (e) => {
-    APP.apiBase = (e.target.value || DEFAULT_API_BASE).trim();
-    localStorage.setItem("acc_profile_api_base", APP.apiBase);
-  });
-  useBackendInput?.addEventListener("change", (e) => {
-    APP.useBackend = e.target.checked;
-    localStorage.setItem("acc_profile_use_backend", String(APP.useBackend));
-  });
-
-  GeminiAI.loadApiKey();
   setStatus("Accuracy Profile v1.0 ✓");
   log("Prêt. Chargez vos données ou utilisez les données Feinberg (2010).", "info");
 }
@@ -166,11 +186,7 @@ async function handleImportAndCalc() {
     }
 
     readConfigFromUI();
-    if (APP.useBackend) {
-      await runAnalysisBackend();
-    } else {
-      runAnalysis();
-    }
+    runAnalysis();
 
     // Afficher l'aperçu
     renderPreview();
@@ -241,75 +257,131 @@ function readConfigFromUI() {
     methodType: document.getElementById("cfg-type").value     || "indirect",
     lambda:     parseFloat(document.getElementById("cfg-lambda").value) / 100 || 0.10,
     beta:       parseFloat(document.getElementById("cfg-beta").value)   / 100 || 0.80,
-    alpha:      0.05,
     modelType:  "linear",
   };
-}
-
-async function runAnalysisBackend() {
-  if (!APP.planValidation?.length) return;
-
-  const apiBase = APP.apiBase || DEFAULT_API_BASE;
-  const url = `${apiBase.replace(/\/$/, "")}/accuracy-profile?charts=true&normative=true&interpret=true`;
-
-  try {
-    const payload = {
-      planValidation: APP.planValidation,
-      planEtalonnage: APP.planEtalonnage || [],
-      config: {
-        methode:    APP.config.methode,
-        materiau:   APP.config.materiau,
-        unite:      APP.config.unite,
-        methodType: APP.config.methodType,
-        modelType:  APP.config.modelType,
-        beta:       APP.config.beta,
-        lambdaVal:  APP.config.lambda,
-        alpha:      APP.config.alpha || 0.05,
-      },
-    };
-
-    const resp = await fetch(url, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(payload),
-    });
-
-    if (!resp.ok) {
-      const errJson = await resp.json().catch(() => ({}));
-      throw new Error(errJson.detail || errJson.message || `Erreur API ${resp.status}`);
-    }
-
-    APP.results = await resp.json();
-
-    renderCalcResults();
-    renderProfileChart();
-    log("Analyse backend terminée (Python/Render)", "ok");
-  } catch (e) {
-    toast("Erreur backend : " + e.message + " — bascule sur calcul local", "warn");
-    log("Erreur backend : " + e.message, "warn");
-    runAnalysis();
-  }
 }
 
 function runAnalysis() {
   if (!APP.planValidation?.length) return;
 
   try {
-    APP.results = AccuracyStats.runFullAnalysis({
-      planValidation: APP.planValidation,
-      planEtalonnage: APP.planEtalonnage || [],
-      methodType:     APP.config.methodType,
-      modelType:      APP.config.modelType,
-      beta:           APP.config.beta,
-      lambda:         APP.config.lambda,
-    });
+    // Vérifier si on peut utiliser le format simple
+    const canUseSimple = APP.config.methodType === 'direct' && (!APP.planEtalonnage || APP.planEtalonnage.length === 0);
 
-    renderCalcResults();
-    renderProfileChart();
-    log("Calculs terminés avec succès", "ok");
+    if (canUseSimple) {
+      // Utiliser l'endpoint simplifié
+      const simpleData = APP.planValidation.map(row => ({
+        concentration: row.xRef,
+        replicate: parseInt(row.rep),
+        measured: row.yResponse,
+        reference: row.xRef
+      }));
+
+      const requestData = {
+        data: simpleData,
+        config: {
+          methode: APP.config.methode,
+          materiau: APP.config.materiau,
+          unite: APP.config.unite,
+          methodType: APP.config.methodType,
+          modelType: APP.config.modelType,
+          beta: APP.config.beta,
+          lambdaVal: APP.config.lambda,
+          alpha: 0.05,
+          framework: "iso5725"
+        }
+      };
+
+      fetch(`${BACKEND_URL}/api/simple`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.status === 'error') {
+          throw new Error(data.detail || 'Erreur de calcul');
+        }
+        APP.results = data;
+        renderCalcResults();
+        renderProfileChart();
+        log("Calculs simplifiés terminés avec succès", "ok");
+      })
+      .catch(error => {
+        toast("Erreur calcul simplifié : " + error.message, "err");
+        log("Erreur calcul simplifié : " + error.message, "err");
+        console.error(error);
+      });
+
+    } else {
+      // Utiliser l'endpoint complet
+      const requestData = {
+        planValidation: APP.planValidation.map(row => ({
+          niveau: row.niveau,
+          serie: row.serie,
+          rep: row.rep,
+          xRef: row.xRef,
+          yResponse: row.yResponse
+        })),
+        planEtalonnage: (APP.planEtalonnage || []).map(row => ({
+          serie: row.serie,
+          niveau: row.niveau,
+          rep: row.rep,
+          xEtalon: row.xEtalon,
+          yResponse: row.yResponse
+        })),
+        config: {
+          methode: APP.config.methode,
+          materiau: APP.config.materiau,
+          unite: APP.config.unite,
+          methodType: APP.config.methodType,
+          modelType: APP.config.modelType,
+          beta: APP.config.beta,
+          lambdaVal: APP.config.lambda,
+          alpha: 0.05,
+          framework: "iso5725"
+        }
+      };
+
+      fetch(`${BACKEND_URL}/accuracy-profile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.status === 'error') {
+          throw new Error(data.detail || 'Erreur de calcul');
+        }
+        APP.results = data;
+        renderCalcResults();
+        renderProfileChart();
+        log("Calculs complets terminés avec succès", "ok");
+      })
+      .catch(error => {
+        toast("Erreur calcul complet : " + error.message, "err");
+        log("Erreur calcul complet : " + error.message, "err");
+        console.error(error);
+      });
+    }
+
   } catch (e) {
-    toast("Erreur calcul : " + e.message, "err");
-    log("Erreur calcul : " + e.message, "err");
+    toast("Erreur préparation données : " + e.message, "err");
+    log("Erreur préparation : " + e.message, "err");
     console.error(e);
   }
 }
@@ -585,18 +657,11 @@ function renderProfileChart() {
 
 // ─── IA ───────────────────────────────────────────────────────────────────────
 function setupAIHandlers() {
-  document.getElementById("btn-save-key").addEventListener("click", () => {
-    const key = document.getElementById("gemini-key").value.trim();
-    if (!key) { toast("Saisissez votre clé API", "warn"); return; }
-    GeminiAI.setApiKey(key);
-    toast("✅ Clé API sauvegardée", "info");
-  });
-
   const aiMap = {
-    "btn-ai-full":    async () => await GeminiAI.diagnosticComplet(APP.results, { ...APP.config, beta: APP.config.beta, lambda: APP.config.lambda }),
-    "btn-ai-profile": async () => await GeminiAI.interpreterProfil(APP.results.tolerances, APP.results.validity, APP.config),
-    "btn-ai-outliers":async () => await GeminiAI.analyserAberrants(APP.results.outliers, APP.config),
-    "btn-ai-reco":    async () => await GeminiAI.recommandations(APP.results, APP.config),
+    "btn-ai-full":    async () => await callBackendInterpret("full"),
+    "btn-ai-profile": async () => await callBackendInterpret("profile"),
+    "btn-ai-outliers":async () => await callBackendInterpret("outliers"),
+    "btn-ai-reco":    async () => await callBackendInterpret("recommendations"),
   };
 
   const btnLabels = {
@@ -609,7 +674,6 @@ function setupAIHandlers() {
   Object.entries(aiMap).forEach(([btnId, fn]) => {
     document.getElementById(btnId).addEventListener("click", async () => {
       if (!APP.results) { toast("Calculez d'abord le profil d'exactitude", "warn"); return; }
-      if (!GeminiAI.hasApiKey()) { toast("Configurez votre clé API Gemini", "warn"); return; }
 
       setBtnLoading(btnId, true, "Analyse IA…");
       document.getElementById("ai-result-card").style.display = "block";
@@ -617,8 +681,8 @@ function setupAIHandlers() {
 
       try {
         const result = await fn();
-        APP.aiContent = result;
-        document.getElementById("ai-content").innerHTML = GeminiAI.formatHTML(result);
+        APP.aiContent = result.text || result.items.join('\n');
+        document.getElementById("ai-content").innerHTML = formatAIContent(result);
         toast("✅ Analyse IA terminée", "info");
       } catch (e) {
         document.getElementById("ai-content").innerHTML = `<span style="color:var(--invalid)">❌ ${e.message}</span>`;
@@ -640,11 +704,38 @@ function setupAIHandlers() {
   });
 }
 
+async function callBackendInterpret(promptType) {
+  const response = await fetch(`${BACKEND_URL}/api/interpret?provider=gemini&prompt_type=${promptType}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      analysis_data: APP.results,
+      config: APP.config
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return await response.json();
+}
+
+function formatAIContent(result) {
+  if (result.source === 'llm') {
+    return result.text.replace(/\n/g, '<br>');
+  } else if (result.items) {
+    return result.items.map(item => `<div>${item}</div>`).join('');
+  }
+  return 'Aucune réponse';
+}
+
 async function handleChat() {
   const input = document.getElementById("chat-input");
   const msg   = input.value.trim();
   if (!msg) return;
-  if (!GeminiAI.hasApiKey()) { toast("Configurez la clé API Gemini", "warn"); return; }
 
   input.value = "";
   appendChat("user", msg);
@@ -656,8 +747,25 @@ async function handleChat() {
       tolerances:  APP.results.tolerances.map(t => ({ niveau: t.niveau, xMean: t.xMean, recouvRel: t.recouvRel, ltbRel: t.ltbRel, lthRel: t.lthRel, accept: t.accept })),
       config:      { lambda: APP.config.lambda, beta: APP.config.beta, methode: APP.config.methode },
     } : {};
-    const resp = await GeminiAI.sendChat(msg, context);
-    document.getElementById(typingId).innerHTML = GeminiAI.formatHTML(resp);
+
+    const response = await fetch(`${BACKEND_URL}/api/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: msg,
+        context: context,
+        provider: 'gemini'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    document.getElementById(typingId).innerHTML = data.response.replace(/\n/g, '<br>');
   } catch (e) {
     document.getElementById(typingId).innerHTML = `❌ ${e.message}`;
   }

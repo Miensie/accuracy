@@ -14,6 +14,7 @@ GET  /api/norms           → Critères normatifs
 """
 from __future__ import annotations
 import logging
+import os
 import time
 from typing import Any, Dict, List, Optional
 
@@ -255,8 +256,11 @@ async def interpret_endpoint(
     prompt_type:   str           = Query("full", description="full | profile | outliers | recommendations"),
 ) -> Dict[str, Any]:
     try:
-        if api_key:
-            text = await get_ai_interpretation(analysis_data, config, api_key, provider, prompt_type)
+        # Utiliser la clé API fournie ou celle des variables d'environnement
+        effective_api_key = api_key or os.getenv("GEMINI_API_KEY")
+
+        if effective_api_key:
+            text = await get_ai_interpretation(analysis_data, config, effective_api_key, provider, prompt_type)
             return {"status": "ok", "source": "llm", "provider": provider, "text": text}
         else:
             items = rule_based_interpretation(
@@ -281,13 +285,16 @@ async def interpret_endpoint(
     tags=["IA"],
 )
 async def chat_endpoint(req: ChatRequest) -> Dict[str, Any]:
-    if not req.api_key:
+    # Utiliser la clé API du corps de la requête ou celle des variables d'environnement
+    effective_api_key = req.api_key or os.getenv("GEMINI_API_KEY")
+
+    if not effective_api_key:
         raise HTTPException(400, "Clé API requise pour le chat")
 
     context_data = req.context or {}
     try:
         text = await get_ai_interpretation(
-            context_data, {}, req.api_key, req.provider, "chat"
+            context_data, {}, effective_api_key, req.provider, "chat"
         )
         return {"status": "ok", "response": text}
     except Exception as e:
