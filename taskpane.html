@@ -73,6 +73,15 @@
           </select>
         </div>
         <div class="form-field">
+          <label>URL du backend</label>
+          <input type="text" id="cfg-api-url" placeholder="https://your-backend.onrender.com" />
+        </div>
+        <div class="form-field" style="grid-column: span 2; display:flex; align-items:center;">
+          <label style="font-weight:500;">
+            <input type="checkbox" id="cfg-use-backend" style="margin-right:8px" /> Utiliser le backend distant
+          </label>
+        </div>
+        <div class="form-field">
           <label>Limite d'acceptabilité &lambda; (%)</label>
           <input type="number" id="cfg-lambda" value="10" min="1" max="50" step="0.5"/>
         </div>

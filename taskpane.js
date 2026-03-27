@@ -11,6 +11,8 @@ import "../modules/demoData.js";
 import "../modules/reportGenerator.js";
 
 // ─── État global ──────────────────────────────────────────────────────────────
+const DEFAULT_API_BASE = "http://localhost:8000";
+
 const APP = {
   planValidation:  null,
   planEtalonnage:  null,
@@ -18,6 +20,8 @@ const APP = {
   config:          {},
   aiContent:       "",
   profileChart:    null,
+  apiBase:         localStorage.getItem("acc_profile_api_base") || DEFAULT_API_BASE,
+  useBackend:      localStorage.getItem("acc_profile_use_backend") === "true",
 };
 
 // ─── Démarrage ────────────────────────────────────────────────────────────────
@@ -36,6 +40,22 @@ function initApp() {
   setupProfileHandlers();
   setupAIHandlers();
   setupReportHandlers();
+
+  // Backend settings (Render / containerized API)
+  const apiUrlInput = document.getElementById("cfg-api-url");
+  const useBackendInput = document.getElementById("cfg-use-backend");
+  if (apiUrlInput) apiUrlInput.value = APP.apiBase;
+  if (useBackendInput) useBackendInput.checked = APP.useBackend;
+
+  apiUrlInput?.addEventListener("change", (e) => {
+    APP.apiBase = (e.target.value || DEFAULT_API_BASE).trim();
+    localStorage.setItem("acc_profile_api_base", APP.apiBase);
+  });
+  useBackendInput?.addEventListener("change", (e) => {
+    APP.useBackend = e.target.checked;
+    localStorage.setItem("acc_profile_use_backend", String(APP.useBackend));
+  });
+
   GeminiAI.loadApiKey();
   setStatus("Accuracy Profile v1.0 ✓");
   log("Prêt. Chargez vos données ou utilisez les données Feinberg (2010).", "info");
@@ -150,7 +170,11 @@ async function handleImportAndCalc() {
     }
 
     readConfigFromUI();
-    runAnalysis();
+    if (APP.useBackend) {
+      await runAnalysisBackend();
+    } else {
+      runAnalysis();
+    }
 
     // Afficher l'aperçu
     renderPreview();
@@ -221,8 +245,54 @@ function readConfigFromUI() {
     methodType: document.getElementById("cfg-type").value     || "indirect",
     lambda:     parseFloat(document.getElementById("cfg-lambda").value) / 100 || 0.10,
     beta:       parseFloat(document.getElementById("cfg-beta").value)   / 100 || 0.80,
+    alpha:      0.05,
     modelType:  "linear",
   };
+}
+
+async function runAnalysisBackend() {
+  if (!APP.planValidation?.length) return;
+
+  const apiBase = APP.apiBase || DEFAULT_API_BASE;
+  const url = `${apiBase.replace(/\/$/, "")}/accuracy-profile?charts=true&normative=true&interpret=true`;
+
+  try {
+    const payload = {
+      planValidation: APP.planValidation,
+      planEtalonnage: APP.planEtalonnage || [],
+      config: {
+        methode:    APP.config.methode,
+        materiau:   APP.config.materiau,
+        unite:      APP.config.unite,
+        methodType: APP.config.methodType,
+        modelType:  APP.config.modelType,
+        beta:       APP.config.beta,
+        lambdaVal:  APP.config.lambda,
+        alpha:      APP.config.alpha || 0.05,
+      },
+    };
+
+    const resp = await fetch(url, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      const errJson = await resp.json().catch(() => ({}));
+      throw new Error(errJson.detail || errJson.message || `Erreur API ${resp.status}`);
+    }
+
+    APP.results = await resp.json();
+
+    renderCalcResults();
+    renderProfileChart();
+    log("Analyse backend terminée (Python/Render)", "ok");
+  } catch (e) {
+    toast("Erreur backend : " + e.message + " — bascule sur calcul local", "warn");
+    log("Erreur backend : " + e.message, "warn");
+    runAnalysis();
+  }
 }
 
 function runAnalysis() {
