@@ -10,7 +10,7 @@ const ApiClient = (() => {
 
   // ─── Configuration ──────────────────────────────────────────────────────────
 
-  const _DEFAULT_BASE = "http://localhost:8000";
+  const _DEFAULT_BASE = "https://accuracy.onrender.com";
   const _STORAGE_KEY  = "ap_backend_url";
 
   let _baseUrl    = _getStoredUrl() || _DEFAULT_BASE;

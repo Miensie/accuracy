@@ -35,6 +35,7 @@ function _initApp() {
   _setupProfileHandlers();
   _setupAIHandlers();
   _setupReportHandlers();
+  ApiClient();
   setStatus("Accuracy Profile v2 ✓");
   log("Prêt. Configurez l'URL du backend et chargez vos données.", "info");
 }
