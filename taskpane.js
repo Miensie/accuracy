@@ -2,26 +2,39 @@
  * ================================================================
  * taskpane.js — Orchestrateur principal Accuracy Profile Add-in v2
  * Connecté au backend Python via ApiClient
- * Suppression de AccuracyStats (calculs déportés côté serveur)
+ *
+ * FIXES APPLIQUÉS :
+ *  1. Suppression des import ES6 (incompatibles avec <script> classique)
+ *  2. ApiClient.healthCheck() → ApiClient.health() [méthode correcte]
+ *  3. Ajout de blocs finally sur tous les handlers async (boutons toujours réactivés)
+ *  4. Démonstration séparée indirect / direct
+ *  5. Gestion de l'état backend (bannière connexion)
+ *  6. Meilleure gestion des erreurs + messages utilisateur
  * ================================================================
  */
 "use strict";
 
+// ─── Modules chargés via <script> — disponibles sur window ──────────────────
+// ApiClient, ExcelBridge, DemoData, ReportGenerator sont injectés globalement
+// par leurs fichiers respectifs. Pas besoin d'import ES6.
+
 // ─── État global ──────────────────────────────────────────────────────────────
 const APP = {
-  planValidation:  null,
-  planEtalonnage:  null,
-  results:         null,   // Réponse complète du backend v2
-  config:          {},
-  aiContent:       "",
-  chatHistory:     [],
-  profileChart:    null,
+  planValidation: null,
+  planEtalonnage: null,
+  results:        null,   // Réponse complète du backend v2
+  config:         {},
+  aiContent:      "",
+  chatHistory:    [],
+  profileChart:   null,
+  backendOnline:  false,
 };
 
 // ─── Démarrage ─────────────────────────────────────────────────────────────────
 Office.onReady(info => {
   if (info.host !== Office.HostType.Excel) {
     setStatus("⚠ Excel requis");
+    _showBanner("⚠ Hôte non supporté — ouvrez dans Excel", false);
     return;
   }
   _initApp();
@@ -29,15 +42,14 @@ Office.onReady(info => {
 
 function _initApp() {
   _setupNavigation();
-  _setupBackendConfig();
   _setupDataHandlers();
   _setupCalcHandlers();
   _setupProfileHandlers();
   _setupAIHandlers();
   _setupReportHandlers();
-  ApiClient();
+  _checkBackendConnection();
   setStatus("Accuracy Profile v2 ✓");
-  log("Prêt. Configurez l'URL du backend et chargez vos données.", "info");
+  log("Prêt. Chargez vos données ou utilisez les données de démonstration.", "info");
 }
 
 
@@ -58,40 +70,36 @@ function _setupNavigation() {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CONFIG BACKEND
+// VÉRIFICATION BACKEND
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function _setupBackendConfig() {
-  const urlInput = document.getElementById("backend-url");
-
-  // Restaurer l'URL sauvegardée
-  const saved = ApiClient.getBaseUrl();
-  if (saved) urlInput.value = saved;
-
-  urlInput.addEventListener("change", () => {
-    ApiClient.setBaseUrl(urlInput.value.trim());
-  });
-
-  document.getElementById("btn-ping-backend").addEventListener("click", _pingBackend);
-  // Test auto au démarrage
-  setTimeout(_pingBackend, 800);
+async function _checkBackendConnection() {
+  _showBanner("Connexion au backend en cours…", null);
+  try {
+    // FIX : méthode correcte est health(), pas healthCheck()
+    await ApiClient.health();
+    APP.backendOnline = true;
+    _showBanner("✓ Backend connecté — " + ApiClient.getBaseUrl(), true);
+    setStatus("Backend ✓");
+    log("Backend connecté : " + ApiClient.getBaseUrl(), "ok");
+  } catch (e) {
+    APP.backendOnline = false;
+    _showBanner("⚠ Backend inaccessible — vérifiez la connexion", false);
+    setStatus("⚠ Backend hors ligne");
+    log("Backend inaccessible : " + e.message, "warn");
+  }
 }
 
-async function _pingBackend() {
-  const statusEl = document.getElementById("backend-status");
-  ApiClient.setBaseUrl(document.getElementById("backend-url").value.trim());
-  statusEl.innerHTML = '<span class="spinner"></span> Test de connexion…';
-  statusEl.style.color = "var(--text-muted)";
-  try {
-    const h = await ApiClient.health();
-    statusEl.textContent = `✓ Backend connecté — numpy ${h.libs?.numpy || "?"} · scipy ${h.libs?.scipy || "?"} · v${h.version || "2"}`;
-    statusEl.style.color = "var(--valid)";
-    log(`Backend connecté : ${ApiClient.getBaseUrl()}`, "ok");
-  } catch (e) {
-    statusEl.textContent = `✗ Backend inaccessible — ${e.message}`;
-    statusEl.style.color = "var(--invalid)";
-    log("Backend inaccessible : " + e.message, "err");
+function _showBanner(msg, online) {
+  const banner = document.getElementById("backend-banner");
+  const dot    = document.getElementById("backend-dot");
+  const txt    = document.getElementById("backend-msg");
+  if (!banner) return;
+  if (txt) txt.textContent = msg;
+  if (dot) {
+    dot.className = "backend-dot" + (online === true ? " online" : online === false ? " offline" : " pending");
   }
+  banner.className = "backend-banner" + (online === true ? " ok" : online === false ? " err" : "");
 }
 
 
@@ -130,21 +138,21 @@ function _setupDataHandlers() {
     const J = parseInt(document.getElementById("cfg-J").value);
     const u = document.getElementById("cfg-unite").value;
     const methodType = document.getElementById("cfg-type").value;
-
     setBtnLoading("btn-generate-plan", true, "Génération…");
     try {
       const { sheetName, rows } = await ExcelBridge.generatePlanValidation(K, I, J, u, methodType);
       toast(`✅ Plan généré : ${rows} lignes → onglet "${sheetName}"`, "info");
-      log(`Plan de validation ${methodType} : K=${K}, I=${I}, J=${J}`, "ok");
+      log(`Plan ${methodType} : K=${K}, I=${I}, J=${J} → ${rows} lignes`, "ok");
       if (methodType === "indirect") {
         await ExcelBridge.generatePlanEtalonnage(I, 2, 2, u);
         log("Plan d'étalonnage créé (2 niveaux, 2 répétitions)", "ok");
       }
     } catch (e) {
       toast("Erreur : " + e.message, "err");
-      log("Erreur : " + e.message, "err");
+      log("Erreur génération plan : " + e.message, "err");
+    } finally {
+      setBtnLoading("btn-generate-plan", false, "⊞ Générer le plan");
     }
-    setBtnLoading("btn-generate-plan", false, "⊞ Générer le plan dans Excel");
   });
 
   // Templates
@@ -163,15 +171,18 @@ function _setupDataHandlers() {
       log("Templates : " + [res.sheetP, res.sheetV, res.sheetE].filter(Boolean).join(", "), "ok");
     } catch (e) {
       toast("Erreur : " + e.message, "err");
-      log("Erreur : " + e.message, "err");
+      log("Erreur templates : " + e.message, "err");
+    } finally {
+      setBtnLoading("btn-generate-templates", false, "▦ Feuilles de saisie");
     }
-    setBtnLoading("btn-generate-templates", false, "▦ Générer les feuilles de saisie");
   });
 
   // Import + calcul
   document.getElementById("btn-import").addEventListener("click", _handleImportAndCalc);
-  // Démo
-  document.getElementById("btn-demo").addEventListener("click", _handleDemo);
+
+  // Démo — deux boutons séparés (indirect / direct)
+  document.getElementById("btn-demo-indirect").addEventListener("click", () => _handleDemo("indirect"));
+  document.getElementById("btn-demo-direct").addEventListener("click",   () => _handleDemo("direct"));
 }
 
 
@@ -189,24 +200,28 @@ async function _handleImportAndCalc() {
     if (methodType === "indirect" && rangeEta) {
       APP.planEtalonnage = await ExcelBridge.readPlanEtalonnage(rangeEta);
     }
-
     _readConfigFromUI();
     await _runAnalysis();
     _renderPreview();
-    toast(`✅ ${APP.planValidation.length} mesures importées`, "info");
+    toast(`✅ ${APP.planValidation.length} mesures importées et analysées`, "ok");
     log(`${APP.planValidation.length} mesures importées depuis Excel`, "ok");
   } catch (e) {
     toast("Erreur : " + e.message, "err");
-    log("Erreur : " + e.message, "err");
+    log("Erreur import : " + e.message, "err");
+  } finally {
+    // FIX : finally garantit que le bouton est toujours réactivé
+    setBtnLoading("btn-import", false, "⊞ Importer et calculer");
   }
-  setBtnLoading("btn-import", false, "⊞ Importer et calculer");
 }
 
 
-function _handleDemo() {
-  const demoType = document.getElementById("cfg-type").value;
+function _handleDemo(type) {
+  // Forcer le sélecteur de type au type demandé
+  document.getElementById("cfg-type").value = type;
+  document.getElementById("etalon-range-row").style.display =
+    type === "indirect" ? "block" : "none";
 
-  if (demoType === "direct") {
+  if (type === "direct") {
     APP.planValidation = DemoData.DIRECT_VALIDATION;
     APP.planEtalonnage = [];
     _applyDemoConfig(DemoData.DIRECT_CONFIG);
@@ -224,16 +239,16 @@ function _handleDemo() {
     log("Erreur : " + e.message, "err");
   });
   _renderPreview();
-  toast("✅ Données de démonstration chargées", "info");
+  toast(`✅ Données de démonstration (${type}) chargées`, "info");
 }
 
 function _applyDemoConfig(cfg) {
-  document.getElementById("cfg-methode").value  = cfg.methode;
-  document.getElementById("cfg-materiau").value = cfg.materiau;
-  document.getElementById("cfg-unite").value    = cfg.unite;
-  document.getElementById("cfg-type").value     = cfg.methodType;
-  document.getElementById("cfg-lambda").value   = (cfg.lambda ?? 0.10) * 100;
-  document.getElementById("cfg-beta").value     = (cfg.beta   ?? 0.80) * 100;
+  document.getElementById("cfg-methode").value  = cfg.methode    || "";
+  document.getElementById("cfg-materiau").value = cfg.materiau   || "";
+  document.getElementById("cfg-unite").value    = cfg.unite      || "";
+  document.getElementById("cfg-type").value     = cfg.methodType || "indirect";
+  document.getElementById("cfg-lambda").value   = ((cfg.lambda ?? 0.10) * 100).toFixed(1);
+  document.getElementById("cfg-beta").value     = ((cfg.beta   ?? 0.80) * 100).toFixed(0);
   document.getElementById("cfg-K").value        = cfg.K || 3;
   document.getElementById("cfg-I").value        = cfg.I || 3;
   document.getElementById("cfg-J").value        = cfg.J || 3;
@@ -281,8 +296,6 @@ function _renderPreview() {
 async function _runAnalysis() {
   if (!APP.planValidation?.length) return;
 
-  const useLLM = document.getElementById("ai-use-llm")?.checked && ApiClient.hasApiKey();
-
   setStatus("Analyse en cours…");
   log("Envoi des données au backend Python…", "info");
 
@@ -295,7 +308,7 @@ async function _runAnalysis() {
       chartFormat:    "png_base64",
       normative:      true,
       interpret:      true,
-      useLLM,
+      useLLM:         false,
     });
 
     if (APP.results.status === "error") {
@@ -305,16 +318,15 @@ async function _runAnalysis() {
     const dur   = APP.results.meta?.duration_s ?? "?";
     const score = APP.results.qualityScore?.overall;
     const label = APP.results.qualityScore?.label || "";
-    log(`Backend : calculs terminés en ${dur}s — Score qualité : ${score}/100 (${label})`, "ok");
+    log(`Calculs terminés en ${dur}s — Score qualité : ${score}/100 (${label})`, "ok");
     setStatus(`Score : ${score}/100 (${label})`);
 
-    // Rendu des résultats
     _renderCalcResults();
     _renderProfileChart();
 
   } catch (e) {
     toast("Erreur backend : " + e.message, "err");
-    log("Erreur : " + e.message, "err");
+    log("Erreur analyse : " + e.message, "err");
     setStatus("⚠ Erreur backend");
     throw e;
   }
@@ -331,9 +343,12 @@ function _setupCalcHandlers() {
     setBtnLoading("btn-write-results", true, "Écriture…");
     try {
       const sheet = await ExcelBridge.writeAnalysisResults(APP.results, APP.config);
-      toast(`✅ Résultats écrits → onglet "${sheet}"`, "info");
-    } catch (e) { toast("Erreur : " + e.message, "err"); }
-    setBtnLoading("btn-write-results", false, "📊 Écrire les résultats dans Excel");
+      toast(`✅ Résultats écrits → onglet "${sheet}"`, "ok");
+    } catch (e) {
+      toast("Erreur : " + e.message, "err");
+    } finally {
+      setBtnLoading("btn-write-results", false, "📊 Écrire les résultats dans Excel");
+    }
   });
 }
 
@@ -348,12 +363,12 @@ function _renderCalcResults() {
                      : qualityScore.overall >= 55 ? "var(--warning)" : "var(--invalid)";
     document.getElementById("quality-content").innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">
-        ${_scoreCard("Global", qualityScore.overall, qualityScore.label, scoreColor)}
-        ${_scoreCard("Justesse", qualityScore.justesse)}
-        ${_scoreCard("Fidélité", qualityScore.fidelite)}
-        ${_scoreCard("Profil", qualityScore.profil)}
-        ${_scoreCard("Normalité", qualityScore.normalite)}
-        ${_scoreCard("Homogénéité", qualityScore.homogeneite)}
+        ${_scoreCard("Global",       qualityScore.overall,    qualityScore.label, scoreColor)}
+        ${_scoreCard("Justesse",     qualityScore.justesse)}
+        ${_scoreCard("Fidélité",     qualityScore.fidelite)}
+        ${_scoreCard("Profil",       qualityScore.profil)}
+        ${_scoreCard("Normalité",    qualityScore.normalite)}
+        ${_scoreCard("Homogénéité",  qualityScore.homogeneite)}
       </div>
       ${(qualityScore.details || []).map(d => `<div class="api-note">⚠ ${d}</div>`).join("")}`;
   }
@@ -362,17 +377,18 @@ function _renderCalcResults() {
   const etaCard = document.getElementById("etalonnage-card");
   if (APP.config.methodType === "indirect" && Object.keys(models).length > 0) {
     etaCard.style.display = "block";
-    document.getElementById("etalonnage-results").innerHTML = Object.entries(models).map(([serie, m]) => `
-      <div class="mono-block" style="margin-bottom:6px">
-        <div class="model-row">
-          <span class="model-label">${serie}</span>
-          <span>Y = <strong>${(m.a1||0).toFixed(4)}</strong>·X + ${(m.a0||0).toFixed(4)}
-            <span style="color:var(--text-muted);font-size:9px;margin-left:8px">
-              R²=${(m.r2||0).toFixed(6)} · r=${(m.r||0).toFixed(6)} · n=${m.n} · RMSE=${(m.rmse||0).toFixed(4)}
+    document.getElementById("etalonnage-results").innerHTML =
+      Object.entries(models).map(([serie, m]) => `
+        <div class="mono-block" style="margin-bottom:6px">
+          <div class="model-row">
+            <span class="model-label">${serie}</span>
+            <span>Y = <strong>${(m.a1||0).toFixed(4)}</strong>·X + ${(m.a0||0).toFixed(4)}
+              <span style="color:var(--text-muted);font-size:9px;margin-left:8px">
+                R²=${(m.r2||0).toFixed(6)} · r=${(m.r||0).toFixed(6)} · n=${m.n} · RMSE=${(m.rmse||0).toFixed(4)}
+              </span>
             </span>
-          </span>
-        </div>
-      </div>`).join("");
+          </div>
+        </div>`).join("");
   } else {
     etaCard.style.display = "none";
   }
@@ -402,7 +418,7 @@ function _renderCalcResults() {
     <td>${(t.xMean||0).toFixed(4)}</td>
     <td>${(t.sIT||0).toFixed(4)}</td>
     <td>${(t.ktol||0).toFixed(4)}</td>
-    <td>${t.nu}</td>
+    <td>${t.nu ?? "—"}</td>
     <td>${(t.ltbRel||0).toFixed(3)}</td>
     <td>${(t.lthRel||0).toFixed(3)}</td>
     <td>${(t.laBasse||90).toFixed(1)}</td>
@@ -458,7 +474,7 @@ function _renderCalcResults() {
 
 function _scoreCard(label, val, sub = "", color = "var(--navy-800)") {
   return `<div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center">
-    <div style="font-size:18px;font-weight:700;color:${color}">${val != null ? val.toFixed(0) : "—"}</div>
+    <div style="font-size:18px;font-weight:700;color:${color}">${val != null ? (+val).toFixed(0) : "—"}</div>
     <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">${label}</div>
     ${sub ? `<div style="font-size:9px;color:${color};font-weight:600">${sub}</div>` : ""}
   </div>`;
@@ -482,9 +498,12 @@ function _setupProfileHandlers() {
       const sheet = await ExcelBridge.insertProfileChart(
         APP.results.tolerances, APP.config, chartBase64
       );
-      toast(`✅ Graphique inséré → onglet "${sheet}"`, "info");
-    } catch (e) { toast("Erreur : " + e.message, "err"); }
-    setBtnLoading("btn-insert-chart", false, "📊 Insérer le graphique dans Excel");
+      toast(`✅ Graphique inséré → onglet "${sheet}"`, "ok");
+    } catch (e) {
+      toast("Erreur : " + e.message, "err");
+    } finally {
+      setBtnLoading("btn-insert-chart", false, "📊 Insérer le graphique dans Excel");
+    }
   });
 }
 
@@ -492,10 +511,10 @@ function _renderProfileChart() {
   if (!APP.results?.tolerances?.length) return;
 
   const { tolerances, validity = {}, charts = {} } = APP.results;
-  const lambda   = APP.config.lambda ?? 0.10;
-  const beta     = APP.config.beta   ?? 0.80;
-  const laBasse  = tolerances[0]?.laBasse ?? (1 - lambda) * 100;
-  const laHaute  = tolerances[0]?.laHaute ?? (1 + lambda) * 100;
+  const lambda  = APP.config.lambda ?? 0.10;
+  const beta    = APP.config.beta   ?? 0.80;
+  const laBasse = tolerances[0]?.laBasse ?? (1 - lambda) * 100;
+  const laHaute = tolerances[0]?.laHaute ?? (1 + lambda) * 100;
 
   // ── Image backend (PNG) ─────────────────────────────────────────────────────
   if (charts.profile) {
@@ -511,7 +530,7 @@ function _renderProfileChart() {
     anovaCard.style.display = "block";
   }
 
-  // ── Légende graphique interactif ────────────────────────────────────────────
+  // ── Légende graphique ────────────────────────────────────────────────────────
   document.getElementById("profile-legend").innerHTML = `
     <div class="legend-item">
       <div class="legend-line" style="background:#F5A623"></div>
@@ -522,12 +541,12 @@ function _renderProfileChart() {
       <span>LTB / LTH (${(beta*100).toFixed(0)}%-expectation)</span>
     </div>
     <div class="legend-item">
-      <div class="legend-line dashed" style="color:#EF4444;border-top-width:2px;width:18px;background:none"></div>
+      <div class="legend-line" style="border-top:2px dashed #EF4444;width:18px;background:none"></div>
       <span>Limites d'acceptabilité (±${(lambda*100).toFixed(0)}%)</span>
     </div>`;
 
   // ── Chart.js interactif ─────────────────────────────────────────────────────
-  const labels      = tolerances.map(t => `${t.xMean.toFixed(3)} ${APP.config.unite || ""}`);
+  const labels      = tolerances.map(t => `${(t.xMean||0).toFixed(3)} ${APP.config.unite || ""}`);
   const recouv      = tolerances.map(t => +((t.recouvRel || 100).toFixed(3)));
   const ltb         = tolerances.map(t => +((t.ltbRel || 0).toFixed(3)));
   const lth         = tolerances.map(t => +((t.lthRel || 0).toFixed(3)));
@@ -544,32 +563,32 @@ function _renderProfileChart() {
           label: "Taux de recouvrement (%)", data: recouv,
           borderColor: "#F5A623", backgroundColor: "rgba(245,166,35,0.08)",
           pointBackgroundColor: pointColors, pointRadius: 7, pointHoverRadius: 9,
-          borderWidth: 2.5, tension: 0.3, fill: false,
+          borderWidth: 2.5, tension: 0.3, fill: false, order: 1,
         },
         {
           label: "LTB (%)", data: ltb,
           borderColor: "#1A3050", backgroundColor: "rgba(26,48,80,0.06)",
-          pointRadius: 4, borderWidth: 1.5, tension: 0.3, fill: "+1",
+          pointRadius: 4, borderWidth: 1.5, tension: 0.3, fill: "+1", order: 2,
         },
         {
           label: "LTH (%)", data: lth,
-          borderColor: "#1A3050", pointRadius: 4, borderWidth: 1.5, tension: 0.3, fill: false,
+          borderColor: "#1A3050", pointRadius: 4, borderWidth: 1.5, tension: 0.3, fill: false, order: 3,
         },
         {
           label: `L.Accept. basse (${laBasse.toFixed(0)}%)`,
           data: tolerances.map(() => laBasse),
-          borderColor: "#EF4444", borderDash: [7,4], pointRadius: 0, borderWidth: 1.5, fill: false,
+          borderColor: "#EF4444", borderDash: [7, 4], pointRadius: 0, borderWidth: 1.5, fill: false, order: 4,
         },
         {
           label: `L.Accept. haute (${laHaute.toFixed(0)}%)`,
           data: tolerances.map(() => laHaute),
-          borderColor: "#EF4444", borderDash: [7,4], pointRadius: 0, borderWidth: 1.5, fill: false,
+          borderColor: "#EF4444", borderDash: [7, 4], pointRadius: 0, borderWidth: 1.5, fill: false, order: 5,
         },
         {
           label: "Référence 100%",
           data: tolerances.map(() => 100),
-          borderColor: "rgba(140,160,185,0.4)", borderDash: [3,3],
-          pointRadius: 0, borderWidth: 1, fill: false,
+          borderColor: "rgba(140,160,185,0.4)", borderDash: [3, 3],
+          pointRadius: 0, borderWidth: 1, fill: false, order: 6,
         },
       ],
     },
@@ -579,9 +598,7 @@ function _renderProfileChart() {
       plugins: {
         legend: { labels: { color: "#4A6080", font: { size: 9, family: "'IBM Plex Mono'" }, boxWidth: 14 } },
         tooltip: {
-          callbacks: {
-            label: ctx => ` ${ctx.dataset.label}: ${ctx.raw?.toFixed(3)}%`,
-          },
+          callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.raw?.toFixed(3)}%` },
         },
       },
       scales: {
@@ -627,7 +644,7 @@ function _renderProfileChart() {
   document.getElementById("validity-domain").innerHTML = tolerances.map(t => `
     <div class="validity-row">
       <div class="validity-dot" style="background:${t.accept ? "var(--valid)" : "var(--invalid)"}"></div>
-      <span>Niveau ${t.niveau} — <strong>${t.xMean.toFixed(3)} ${APP.config.unite||""}</strong> :
+      <span>Niveau ${t.niveau} — <strong>${(t.xMean||0).toFixed(3)} ${APP.config.unite||""}</strong> :
         Récouv.=${(t.recouvRel||0).toFixed(2)}% | LTB=${(t.ltbRel||0).toFixed(2)}% / LTH=${(t.lthRel||0).toFixed(2)}%
         | Err.tot.=${(t.errorTotal||0).toFixed(2)}%
         → <strong>${t.accept ? "VALIDE" : "NON VALIDE"}</strong>
@@ -644,15 +661,12 @@ function _renderProfileChart() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function _setupAIHandlers() {
-  // Clé et provider
-  document.getElementById("btn-save-key").addEventListener("click", () => {
-    const key      = document.getElementById("ai-key").value.trim();
-    const provider = document.getElementById("ai-provider").value;
+  // Clé API
+  document.getElementById("btn-save-key")?.addEventListener("click", () => {
+    const key = document.getElementById("ai-key")?.value?.trim();
     if (!key) { toast("Saisissez votre clé API", "warn"); return; }
     ApiClient.setApiKey(key);
-    ApiClient.setProvider(provider);
-    toast("✅ Clé API et fournisseur sauvegardés", "info");
-    log(`IA : provider=${provider}`, "ok");
+    toast("✅ Clé API sauvegardée (session courante)", "info");
   });
 
   // Interprétation par règles (sans LLM)
@@ -661,7 +675,7 @@ function _setupAIHandlers() {
     setBtnLoading("btn-ai-rules", true, "Analyse en cours…");
     _showAIResult('<span class="spinner"></span> Moteur de règles…', "RÈGLES");
     try {
-      const res = await ApiClient.interpret(APP.results, APP.config, "full", false);
+      const res   = await ApiClient.interpret(APP.results, APP.config, "full", false);
       const items = res.items || [];
       APP.aiContent = items.map(i => `[${i.category}] ${i.message}`).join("\n");
       _showAIResult(
@@ -677,8 +691,9 @@ function _setupAIHandlers() {
     } catch (e) {
       _showAIResult(`<span style="color:var(--invalid)">❌ ${e.message}</span>`, "ERREUR");
       toast(e.message, "err");
+    } finally {
+      setBtnLoading("btn-ai-rules", false, "⚙ Interprétation par règles (sans clé API)");
     }
-    setBtnLoading("btn-ai-rules", false, "⚙ Interprétation par règles (sans clé API)");
   });
 
   // Actions LLM
@@ -691,25 +706,22 @@ function _setupAIHandlers() {
 
   Object.entries(llmActions).forEach(([btnId, { type, label }]) => {
     document.getElementById(btnId).addEventListener("click", async () => {
-      if (!APP.results)           { toast("Calculez d'abord le profil d'exactitude", "warn"); return; }
-      if (!ApiClient.hasApiKey()) { toast("Configurez votre clé API dans l'onglet IA", "warn"); return; }
-
+      if (!APP.results) { toast("Calculez d'abord le profil d'exactitude", "warn"); return; }
       setBtnLoading(btnId, true, "Analyse LLM…");
       _showAIResult('<span class="spinner"></span> Analyse par IA en cours…', "LLM");
-
       try {
-        const provider = document.getElementById("ai-provider").value;
-        ApiClient.setProvider(provider);
-        const res = await ApiClient.interpret(APP.results, APP.config, type, true);
-        const text = res.text || res.items?.map(i => `[${i.category}] ${i.message}`).join("\n") || "—";
+        const useLLM = ApiClient.hasApiKey();
+        const res    = await ApiClient.interpret(APP.results, APP.config, type, useLLM);
+        const text   = res.text || res.items?.map(i => `[${i.category}] ${i.message}`).join("\n") || "—";
         APP.aiContent = text;
-        _showAIResult(_formatAIText(text), `LLM — ${provider.toUpperCase()}`);
+        _showAIResult(_formatAIText(text), `LLM — ${useLLM ? "LLM activé" : "Règles"}`);
         toast("✅ Analyse IA terminée", "info");
       } catch (e) {
         _showAIResult(`<span style="color:var(--invalid)">❌ ${e.message}</span>`, "ERREUR");
         toast(e.message, "err");
+      } finally {
+        setBtnLoading(btnId, false, label);
       }
-      setBtnLoading(btnId, false, label);
     });
   });
 
@@ -729,33 +741,34 @@ function _setupAIHandlers() {
 async function _handleChat() {
   const input = document.getElementById("chat-input");
   const msg   = input.value.trim();
-  if (!msg)                    return;
-  if (!ApiClient.hasApiKey()) { toast("Configurez la clé API dans l'onglet IA", "warn"); return; }
+  if (!msg) return;
 
   input.value = "";
   _appendChat("user", msg);
   const typingId = _appendChat("assistant", '<span class="spinner"></span>');
 
   const context = APP.results ? {
-    validity:   APP.results.validity,
-    tolerances: (APP.results.tolerances || []).map(t => ({
+    validity:     APP.results.validity,
+    tolerances:   (APP.results.tolerances || []).map(t => ({
       niveau: t.niveau, xMean: t.xMean, recouvRel: t.recouvRel,
       ltbRel: t.ltbRel, lthRel: t.lthRel, accept: t.accept,
     })),
     qualityScore: APP.results.qualityScore,
-    config: { lambda: APP.config.lambda, beta: APP.config.beta, methode: APP.config.methode },
+    config:       { lambda: APP.config.lambda, beta: APP.config.beta, methode: APP.config.methode },
   } : {};
 
   try {
-    ApiClient.setProvider(document.getElementById("ai-provider").value);
-    const res  = await ApiClient.chat(msg, context, APP.chatHistory);
-    const text = res.response || "—";
-    APP.chatHistory.push({ role: "user", content: msg });
+    const useLLM = ApiClient.hasApiKey();
+    const res    = await ApiClient.chat(msg, context, APP.chatHistory, useLLM);
+    const text   = res.response || res.items?.join("\n") || "—";
+    APP.chatHistory.push({ role: "user",      content: msg });
     APP.chatHistory.push({ role: "assistant", content: text });
     if (APP.chatHistory.length > 20) APP.chatHistory = APP.chatHistory.slice(-20);
-    document.getElementById(typingId).innerHTML = _formatAIText(text);
+    const bubble = document.getElementById(typingId);
+    if (bubble) bubble.innerHTML = _formatAIText(text);
   } catch (e) {
-    document.getElementById(typingId).innerHTML = `<span style="color:var(--invalid)">❌ ${e.message}</span>`;
+    const bubble = document.getElementById(typingId);
+    if (bubble) bubble.innerHTML = `<span style="color:var(--invalid)">❌ ${e.message}</span>`;
   }
 }
 
@@ -795,17 +808,17 @@ function _sevColor(sev) { return { success:"valid", info:"amber", warning:"warni
 
 function _setupReportHandlers() {
   const _getOpts = () => ({
-    labo:      document.getElementById("rpt-labo").value,
-    analyste:  document.getElementById("rpt-analyste").value,
-    ref:       document.getElementById("rpt-ref").value,
-    version:   document.getElementById("rpt-version").value,
-    params:    document.getElementById("rpt-params").checked,
-    etalonnage:document.getElementById("rpt-etalonnage").checked,
-    criteria:  document.getElementById("rpt-criteria").checked,
-    tolerance: document.getElementById("rpt-tolerance").checked,
-    outliers:  document.getElementById("rpt-outliers").checked,
-    normative: document.getElementById("rpt-normative").checked,
-    ai:        document.getElementById("rpt-ai").checked,
+    labo:       document.getElementById("rpt-labo").value,
+    analyste:   document.getElementById("rpt-analyste").value,
+    ref:        document.getElementById("rpt-ref").value,
+    version:    document.getElementById("rpt-version").value,
+    params:     document.getElementById("rpt-params").checked,
+    etalonnage: document.getElementById("rpt-etalonnage").checked,
+    criteria:   document.getElementById("rpt-criteria").checked,
+    tolerance:  document.getElementById("rpt-tolerance").checked,
+    outliers:   document.getElementById("rpt-outliers").checked,
+    normative:  document.getElementById("rpt-normative").checked,
+    ai:         document.getElementById("rpt-ai").checked,
   });
 
   // HTML
@@ -818,7 +831,7 @@ function _setupReportHandlers() {
       );
       const fname = `Rapport_${(APP.config.methode||"methode").replace(/\s+/g,"_").slice(0,30)}_${new Date().toISOString().slice(0,10)}.html`;
       ReportGenerator.downloadHTMLReport(html, fname);
-      toast("✅ Rapport HTML téléchargé", "info");
+      toast("✅ Rapport HTML téléchargé", "ok");
       logReport("Rapport HTML généré", "ok");
     } catch (e) {
       toast("Erreur : " + e.message, "err");
@@ -831,16 +844,17 @@ function _setupReportHandlers() {
     if (!APP.results) { toast("Calculez d'abord le profil", "warn"); return; }
     setBtnLoading("btn-report-pdf", true, "Génération PDF…");
     try {
-      const opts  = _getOpts();
-      const cfg   = { ...APP.config, laboratoire: opts.labo, analyste: opts.analyste };
+      const opts = _getOpts();
+      const cfg  = { ...APP.config, laboratoire: opts.labo, analyste: opts.analyste };
       await ReportGenerator.downloadPDFReport(APP.results, cfg);
-      toast("✅ Rapport PDF téléchargé", "info");
+      toast("✅ Rapport PDF téléchargé", "ok");
       logReport("Rapport PDF généré via backend", "ok");
     } catch (e) {
       toast("Erreur PDF : " + e.message, "err");
       logReport("Erreur PDF : " + e.message, "err");
+    } finally {
+      setBtnLoading("btn-report-pdf", false, "📄 Télécharger le rapport PDF (via backend)");
     }
-    setBtnLoading("btn-report-pdf", false, "📄 Télécharger le rapport PDF (via backend)");
   });
 }
 
@@ -850,9 +864,10 @@ function _setupReportHandlers() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function toast(msg, type = "info", duration = 3200) {
+  const icons = { ok: "✅", err: "❌", info: "ℹ", warn: "⚠" };
   const el = document.createElement("div");
   el.className = `toast ${type}`;
-  el.innerHTML = `<span>${{ok:"✅",err:"❌",info:"ℹ",warn:"⚠"}[type]||"ℹ"}</span><span>${msg}</span>`;
+  el.innerHTML = `<span>${icons[type] || "ℹ"}</span><span>${msg}</span>`;
   document.getElementById("toast-container").appendChild(el);
   setTimeout(() => {
     el.style.transition = "all 0.25s ease";

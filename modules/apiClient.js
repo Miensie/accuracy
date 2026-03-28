@@ -2,6 +2,8 @@
  * ================================================================
  * modules/apiClient.js — Client REST vers le backend Python
  * Encapsule tous les appels à l'API Accuracy Profile v2
+ *
+ * FIX : export default → window.ApiClient (non-ES-module context)
  * ================================================================
  */
 "use strict";
@@ -11,20 +13,15 @@ const ApiClient = (() => {
   // ─── Configuration ──────────────────────────────────────────────────────────
 
   const _DEFAULT_BASE = "https://accuracy.onrender.com";
-  const _STORAGE_KEY  = "ap_backend_url";
 
-  let _baseUrl    = _getStoredUrl() || _DEFAULT_BASE;
-  let _apiKey     = "";           // Clé Gemini / Claude pour le LLM
-  let _provider   = "auto";      // "gemini" | "claude" | "auto"
-  let _timeout    = 120_000;     // ms
-
-  function _getStoredUrl() {
-    try { return localStorage.getItem(_STORAGE_KEY) || ""; } catch { return ""; }
-  }
+  let _baseUrl  = _DEFAULT_BASE;
+  let _apiKey   = "";
+  let _provider = "auto";   // "gemini" | "claude" | "auto"
+  let _timeout  = 120_000;  // ms
 
   function setBaseUrl(url) {
-    _baseUrl = (url || _DEFAULT_BASE).replace(/\/$/, "");
-    try { localStorage.setItem(_STORAGE_KEY, _baseUrl); } catch { /**/ }
+    // URL fixe — modification désactivée pour la production
+    _baseUrl = _DEFAULT_BASE;
   }
 
   function getBaseUrl()  { return _baseUrl; }
@@ -54,7 +51,7 @@ const ApiClient = (() => {
         try {
           const err = await resp.json();
           detail = err.detail || err.message || detail;
-        } catch { /**/ }
+        } catch { /* ignore */ }
         throw new Error(detail);
       }
 
@@ -62,7 +59,7 @@ const ApiClient = (() => {
     } catch (e) {
       clearTimeout(timer);
       if (e.name === "AbortError") {
-        throw new Error(`Délai d'attente dépassé (${_timeout / 1000}s) — le backend est-il démarré ?`);
+        throw new Error(`Délai dépassé (${_timeout / 1000}s) — le backend est-il démarré ?`);
       }
       throw e;
     }
@@ -82,6 +79,9 @@ const ApiClient = (() => {
 
   // ─── Santé du service ───────────────────────────────────────────────────────
 
+  /**
+   * BUG FIX : méthode renommée "health" (était "healthCheck" dans taskpane.js)
+   */
   async function health() {
     return _fetch("/api/health");
   }
@@ -89,19 +89,6 @@ const ApiClient = (() => {
 
   // ─── Analyse principale ─────────────────────────────────────────────────────
 
-  /**
-   * Lance l'analyse complète du profil d'exactitude.
-   *
-   * @param {object}  params
-   * @param {Array}   params.planValidation   - Lignes ValidationRow
-   * @param {Array}   params.planEtalonnage   - Lignes EtalonnageRow (vide si direct)
-   * @param {object}  params.config           - ValidationConfig
-   * @param {boolean} params.charts           - Générer graphiques (défaut true)
-   * @param {string}  params.chartFormat      - "png_base64" | "plotly_json"
-   * @param {boolean} params.normative        - Vérifications normatives (défaut true)
-   * @param {boolean} params.interpret        - Interprétation règles (défaut true)
-   * @param {boolean} params.useLLM          - Envoyer la clé API pour LLM (défaut false)
-   */
   async function analyze({
     planValidation,
     planEtalonnage = [],
@@ -112,7 +99,6 @@ const ApiClient = (() => {
     interpret      = true,
     useLLM         = false,
   }) {
-    // Normaliser config vers le format backend
     const backendConfig = {
       methode:    config.methode    || "",
       materiau:   config.materiau   || "",
@@ -127,7 +113,6 @@ const ApiClient = (() => {
       analyste:    config.analyste   || "",
     };
 
-    // Construire la query string
     const qs = new URLSearchParams({
       charts:       charts,
       chart_format: chartFormat,
@@ -183,12 +168,6 @@ const ApiClient = (() => {
 
   // ─── Interprétation IA ──────────────────────────────────────────────────────
 
-  /**
-   * @param {object} analysisData  - Résultats de analyze()
-   * @param {object} config        - Config de la méthode
-   * @param {string} promptType    - "full" | "profile" | "outliers" | "recommendations"
-   * @param {boolean} useLLM       - Utiliser le LLM si clé disponible
-   */
   async function interpret(analysisData, config, promptType = "full", useLLM = false) {
     const qs = new URLSearchParams({ prompt_type: promptType });
     if (useLLM && _apiKey) {
@@ -204,16 +183,15 @@ const ApiClient = (() => {
 
   // ─── Chat IA ────────────────────────────────────────────────────────────────
 
-  async function chat(message, context = {}, history = []) {
-    if (!_apiKey) throw new Error("Clé API requise pour le chat");
+  async function chat(message, context = {}, history = [], useLLM = false) {
+    if (useLLM && !_apiKey) throw new Error("Clé API requise pour le chat LLM");
     return _fetch("/api/chat", {
       method: "POST",
       body:   JSON.stringify({
         message,
         context,
         history,
-        api_key:  _apiKey,
-        provider: _provider,
+        ...(useLLM && _apiKey ? { api_key: _apiKey, provider: _provider } : {}),
       }),
     });
   }
@@ -250,7 +228,7 @@ const ApiClient = (() => {
     setBaseUrl, getBaseUrl,
     setApiKey,  getApiKey, hasApiKey,
     setProvider,
-    health,
+    health,          // ← méthode correcte (était "healthCheck" dans l'ancienne version)
     analyze,
     analyzeSimple,
     grubbs,
@@ -262,4 +240,6 @@ const ApiClient = (() => {
   };
 })();
 
+// ⚠️ FIX CRITIQUE : export window global pour chargement <script> classique
+// (export default ne fonctionne PAS sans type="module")
 window.ApiClient = ApiClient;

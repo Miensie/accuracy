@@ -53,14 +53,10 @@
       <p class="panel-sub">Configuration du plan de validation selon ISO 5725-2 / Feinberg (2010).</p>
     </div>
 
-    <!-- Backend URL -->
-    <div class="card">
-      <div class="card-label">CONNEXION BACKEND PYTHON</div>
-      <div class="input-row" style="margin-bottom:4px">
-        <input type="text" id="backend-url" placeholder="http://localhost:8000" value="http://localhost:8000"/>
-        <button class="btn-icon" id="btn-ping-backend" title="Tester la connexion">⟳</button>
-      </div>
-      <div id="backend-status" class="api-note">Statut : non testé</div>
+    <!-- Statut backend -->
+    <div id="backend-banner" class="backend-banner">
+      <span id="backend-dot" class="backend-dot"></span>
+      <span id="backend-msg">Vérification de la connexion au backend…</span>
     </div>
 
     <!-- Paramètres de validation -->
@@ -132,8 +128,10 @@
           <input type="number" id="cfg-J" value="3" min="2" max="10"/>
         </div>
       </div>
-      <button class="btn btn-secondary" id="btn-generate-plan">⊞ Générer le plan dans Excel</button>
-      <button class="btn btn-ghost" id="btn-generate-templates" style="margin-top:6px">▦ Générer les feuilles de saisie</button>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button class="btn btn-secondary" id="btn-generate-plan" style="flex:1">⊞ Générer le plan</button>
+        <button class="btn btn-ghost" id="btn-generate-templates" style="flex:1">▦ Feuilles de saisie</button>
+      </div>
     </div>
 
     <!-- Import depuis Excel -->
@@ -154,7 +152,7 @@
         </div>
       </div>
       <button class="btn btn-primary" id="btn-import">
-        <span id="btn-import-label">⊞ Importer et calculer</span>
+        ⊞ Importer et calculer
       </button>
     </div>
 
@@ -176,7 +174,10 @@
         <strong>Méthode indirecte</strong> — Feinberg (2010) : vitamine B3 HPLC. λ=10%, β=80%.<br>
         <strong>Méthode directe</strong> — Titrimétrie NaCl. λ=5%, β=80%.
       </p>
-      <button class="btn btn-ghost" id="btn-demo">▶ Charger les données de démonstration</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-ghost" id="btn-demo-indirect" style="flex:1">▶ Feinberg (Indirect)</button>
+        <button class="btn btn-ghost" id="btn-demo-direct" style="flex:1">▶ NaCl (Direct)</button>
+      </div>
     </div>
 
     <div id="log-data" class="log-panel"></div>
@@ -262,7 +263,7 @@
         <div id="normative-content"></div>
       </div>
 
-      <div style="padding:0 var(--gap) var(--gap)">
+      <div style="padding:0 0 var(--gap)">
         <button class="btn btn-secondary" id="btn-write-results">
           📊 Écrire les résultats dans Excel
         </button>
@@ -319,8 +320,8 @@
         <div id="validity-domain" class="validity-info"></div>
       </div>
 
-      <div style="padding:0 var(--gap) var(--gap);display:flex;gap:8px">
-        <button class="btn btn-secondary" id="btn-insert-chart" style="flex:1">
+      <div style="padding:0 0 var(--gap)">
+        <button class="btn btn-secondary" id="btn-insert-chart">
           📊 Insérer le graphique dans Excel
         </button>
       </div>
@@ -339,33 +340,14 @@
 
     <!-- Config IA -->
     <div class="card">
-      <div class="card-label">CONFIGURATION IA</div>
-      <div class="form-grid" style="margin-bottom:8px">
-        <div class="form-field">
-          <label>Clé API (Gemini ou Claude)</label>
-          <div class="input-row">
-            <input type="password" id="ai-key" placeholder="AIza… ou sk-ant-…" autocomplete="off"/>
-            <button class="btn-icon" id="btn-save-key" title="Sauvegarder">💾</button>
-          </div>
-          <div class="api-note">
-            Gemini : <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a> (gratuit) ·
-            Claude : <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>
-          </div>
-        </div>
-        <div class="form-field">
-          <label>Fournisseur LLM</label>
-          <select id="ai-provider" class="select-field">
-            <option value="auto">Auto (Gemini en priorité)</option>
-            <option value="gemini">Gemini (Google AI Studio)</option>
-            <option value="claude">Claude (Anthropic)</option>
-          </select>
-        </div>
-      </div>
+      <div class="card-label">CONFIGURATION IA (Optionnel)</div>
       <div class="form-field">
-        <label style="font-size:10px;color:var(--text-muted)">
-          <input type="checkbox" id="ai-use-llm" style="accent-color:var(--amber)"/>
-          &nbsp;Activer le LLM (clé API envoyée au backend)
-        </label>
+        <label>Clé API LLM <span class="field-note">(Gemini / Claude — développement local)</span></label>
+        <div class="input-row">
+          <input type="password" id="ai-key" placeholder="AIza… ou sk-ant-…" autocomplete="off"/>
+          <button class="btn-icon" id="btn-save-key" title="Sauvegarder">💾</button>
+        </div>
+        <p class="api-note">En production, la clé est configurée côté serveur. Champ pour tests locaux uniquement.</p>
       </div>
     </div>
 
@@ -471,11 +453,11 @@
 
 <div id="toast-container"></div>
 
-<!-- Scripts modules (ordre d'import important) -->
-<script src="../modules/apiClient.js"></script>
-<script src="../modules/demoData.js"></script>
-<script src="../modules/excelBridge.js"></script>
-<script src="../modules/reportGenerator.js"></script>
+<!-- ⚠️ ORDRE CRITIQUE : apiClient doit être chargé EN PREMIER -->
+<script src="/modules/apiClient.js"></script>
+<script src="/modules/demoData.js"></script>
+<script src="/modules/excelBridge.js"></script>
+<script src="/modules/reportGenerator.js"></script>
 <script src="taskpane.js"></script>
 </body>
 </html>
